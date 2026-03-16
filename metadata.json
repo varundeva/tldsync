@@ -1,0 +1,5 @@
+{
+  "name": "Domain Tracker Dashboard",
+  "description": "A modern dashboard to track domain renewal dates, view DNS records, and WHOIS data.",
+  "requestFramePermissions": []
+}
