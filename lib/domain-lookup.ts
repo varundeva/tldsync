@@ -1,5 +1,124 @@
 import dns from "dns/promises";
 import tls from "tls";
+import net from "net";
+import whois from "whois-parsed";
+
+// ─── Custom WHOIS Lookup ────────────────────────────────────
+
+export interface WhoisInfo {
+    registrar: string | null;
+    creationDate: string | null;
+    expirationDate: string | null;
+    raw: Record<string, string>;
+}
+
+async function rawWhois(
+    domain: string,
+    server: string = "whois.iana.org"
+): Promise<string> {
+    return new Promise((resolve, reject) => {
+        let data = "";
+        const socket = net.createConnection(43, server, () => {
+            socket.write(`${domain}\r\n`);
+        });
+        socket.on("data", (chunk) => {
+            data += chunk;
+        });
+        socket.on("end", () => {
+            resolve(data);
+        });
+        socket.on("error", (err) => {
+            reject(err);
+        });
+        socket.setTimeout(4000, () => {
+            socket.destroy();
+            reject(new Error("WHOIS timeout"));
+        });
+    });
+}
+
+export async function fetchWhoisInfo(domain: string): Promise<WhoisInfo | null> {
+    try {
+        // 1. Try primary method: whois-parsed NPM package (with strict timeout)
+        try {
+            const parsedData = (await Promise.race([
+                whois.lookup(domain),
+                new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error("whois-parsed timeout")), 4000)
+                ),
+            ])) as any;
+            if (parsedData && parsedData.domainName) {
+                return {
+                    registrar: parsedData.registrar || null,
+                    creationDate: parsedData.creationDate || null,
+                    expirationDate: parsedData.expirationDate || null,
+                    raw: JSON.parse(JSON.stringify(parsedData)) as Record<string, string>,
+                };
+            }
+        } catch (npmError) {
+            console.warn(`[whois-parsed] Failed for ${domain}, falling back to raw rawWhois method...`);
+        }
+
+        // 2. Fallback: Custom raw TCP method
+        // Get registry server from IANA
+        const rawIana = await rawWhois(domain);
+        let targetServer = "whois.iana.org";
+
+        const match = rawIana.match(/whois:\s+([a-zA-Z0-9.-]+)/i);
+        if (match && match[1]) {
+            targetServer = match[1];
+        } else {
+            // Fallbacks
+            if (domain.endsWith(".com") || domain.endsWith(".net")) {
+                targetServer = "whois.verisign-grs.com";
+            } else if (domain.endsWith(".org")) {
+                targetServer = "whois.pir.org";
+            } else if (domain.endsWith(".in")) {
+                targetServer = "whois.nixiregistry.in";
+            }
+        }
+
+        // 2. Query target server
+        const rawData = await rawWhois(domain, targetServer);
+
+        // 3. Parse raw data
+        const lines = rawData.split(/\r?\n/);
+        const parsed: Record<string, string> = {};
+        let registrar: string | null = null;
+        let creationDate: string | null = null;
+        let expirationDate: string | null = null;
+
+        for (const line of lines) {
+            if (line.trim().startsWith("%") || line.trim().startsWith("#")) continue;
+
+            const parts = line.split(/:(.*)/);
+            if (parts.length < 2) continue;
+
+            const key = parts[0].trim();
+            const value = parts[1].trim();
+            if (!key || !value) continue;
+
+            parsed[key] = value;
+            const lowerKey = key.toLowerCase();
+
+            if (lowerKey === "registrar") registrar = value;
+            if (lowerKey === "creation date") creationDate = value;
+            if (lowerKey === "registry expiry date" || lowerKey === "registrar registration expiration date") {
+                expirationDate = value;
+            }
+        }
+
+        return {
+            registrar,
+            creationDate,
+            expirationDate,
+            raw: parsed,
+        };
+    } catch (error) {
+        console.error("Custom WHOIS Error:", error);
+        return null;
+    }
+}
 
 // ─── Common subdomains to probe ─────────────────────────────
 
@@ -54,6 +173,10 @@ export interface DnsRecordSet {
         expire: number;
         minttl: number;
     } | null;
+    CAA: { critical: number; issue?: string; issuewild?: string; iodef?: string; contactemail?: string; contactphone?: string }[];
+    SRV: { priority: number; weight: number; port: number; name: string }[];
+    NAPTR: { flags: string; service: string; regexp: string; replacement: string; order: number; preference: number }[];
+    PTR: string[];
 }
 
 export interface SubdomainRecord {
@@ -98,10 +221,10 @@ export interface ComprehensiveDomainData {
     http: HttpInfo | null;
 }
 
-// ─── Fetch root DNS records ─────────────────────────────────
+import fs from "fs";
 
 async function fetchRootDns(domain: string): Promise<DnsRecordSet> {
-    const [a, aaaa, mx, txt, cname, ns, soa] = await Promise.allSettled([
+    const [a, aaaa, mx, txt, cname, ns, soa, caa, srv, naptr, ptr] = await Promise.allSettled([
         dns.resolve4(domain).catch(() => []),
         dns.resolve6(domain).catch(() => []),
         dns.resolveMx(domain).catch(() => []),
@@ -109,6 +232,10 @@ async function fetchRootDns(domain: string): Promise<DnsRecordSet> {
         dns.resolveCname(domain).catch(() => []),
         dns.resolveNs(domain).catch(() => []),
         dns.resolveSoa(domain).catch(() => null),
+        dns.resolveCaa(domain).catch(() => []),
+        dns.resolveSrv(domain).catch(() => []),
+        dns.resolveNaptr(domain).catch(() => []),
+        dns.resolvePtr(domain).catch(() => []),
     ]);
 
     return {
@@ -125,6 +252,10 @@ async function fetchRootDns(domain: string): Promise<DnsRecordSet> {
             soa.status === "fulfilled"
                 ? (soa.value as DnsRecordSet["SOA"])
                 : null,
+        CAA: caa.status === "fulfilled" ? (caa.value as any[]) : [],
+        SRV: srv.status === "fulfilled" ? (srv.value as any[]) : [],
+        NAPTR: naptr.status === "fulfilled" ? (naptr.value as any[]) : [],
+        PTR: ptr.status === "fulfilled" ? (ptr.value as string[]) : [],
     };
 }
 
@@ -170,6 +301,7 @@ async function discoverSubdomains(
     });
 
     const settled = await Promise.all(checks);
+
     for (const r of settled) {
         if (r) results.push(r);
     }
@@ -226,7 +358,7 @@ async function fetchSslInfo(hostname: string): Promise<SslInfo | null> {
             );
 
             socket.on("error", () => resolve(null));
-            socket.setTimeout(8000, () => {
+            socket.setTimeout(3000, () => {
                 socket.destroy();
                 resolve(null);
             });
@@ -241,7 +373,7 @@ async function fetchSslInfo(hostname: string): Promise<SslInfo | null> {
 async function fetchHttpInfo(domain: string): Promise<HttpInfo | null> {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const timeoutId = setTimeout(() => controller.abort(), 3500);
 
         const response = await fetch(`https://${domain}`, {
             method: "HEAD",
@@ -281,7 +413,7 @@ async function fetchHttpInfo(domain: string): Promise<HttpInfo | null> {
         // Try HTTP fallback
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 10000);
+            const timeoutId = setTimeout(() => controller.abort(), 3500);
 
             const response = await fetch(`http://${domain}`, {
                 method: "HEAD",

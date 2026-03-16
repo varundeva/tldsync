@@ -8,8 +8,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import dns from "dns/promises";
-import whois from "whois-parsed";
-import { fetchComprehensiveDomainData } from "@/lib/domain-lookup";
+import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup";
 
 // ─── Schemas ─────────────────────────────────────────────────
 
@@ -109,7 +108,12 @@ export async function verifyDomain(domainId: string) {
     // Check TXT records for the verification token
     let txtRecords: string[][] = [];
     try {
-      txtRecords = await dns.resolveTxt(domain.domainName);
+      txtRecords = await Promise.race([
+        dns.resolveTxt(domain.domainName),
+        new Promise<string[][]>((_, reject) =>
+          setTimeout(() => reject(new Error("DNS Timeout")), 4000)
+        ),
+      ]);
     } catch {
       return {
         error:
@@ -131,7 +135,7 @@ export async function verifyDomain(domainId: string) {
 
     // Verification passed! Fetch comprehensive data
     const [whoisData, comprehensiveData] = await Promise.all([
-      whois.lookup(domain.domainName).catch(() => null),
+      fetchWhoisInfo(domain.domainName),
       fetchComprehensiveDomainData(domain.domainName),
     ]);
 
@@ -158,7 +162,7 @@ export async function verifyDomain(domainId: string) {
         registrationDate,
         expirationDate,
         nameServers,
-        whoisData: whoisData ? JSON.stringify(whoisData) : null,
+        whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : null,
         dnsRecords: JSON.stringify(comprehensiveData),
         lastSyncedAt: now,
         updatedAt: now,
@@ -192,7 +196,7 @@ export async function syncDomain(domainId: string) {
 
   try {
     const [whoisData, comprehensiveData] = await Promise.all([
-      whois.lookup(domain.domainName).catch(() => null),
+      fetchWhoisInfo(domain.domainName),
       fetchComprehensiveDomainData(domain.domainName),
     ]);
 
@@ -216,7 +220,7 @@ export async function syncDomain(domainId: string) {
         registrationDate,
         expirationDate,
         nameServers,
-        whoisData: whoisData ? JSON.stringify(whoisData) : domain.whoisData,
+        whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
         dnsRecords: JSON.stringify(comprehensiveData),
         lastSyncedAt: now,
         updatedAt: now,

@@ -174,9 +174,9 @@ export default async function DomainDetailsPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-lg font-semibold text-slate-900">
+                <div className="text-sm font-semibold text-slate-900">
                   {domain.registrationDate
-                    ? format(domain.registrationDate, "MMM d, yyyy")
+                    ? `${format(domain.registrationDate, "PPp")} (Local Time)`
                     : "—"}
                 </div>
               </CardContent>
@@ -188,9 +188,9 @@ export default async function DomainDetailsPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-lg font-semibold text-slate-900">
+                <div className="text-sm font-semibold text-slate-900">
                   {domain.expirationDate
-                    ? format(domain.expirationDate, "MMM d, yyyy")
+                    ? `${format(domain.expirationDate, "PPp")} (Local Time)`
                     : "—"}
                 </div>
               </CardContent>
@@ -214,9 +214,9 @@ export default async function DomainDetailsPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-lg font-semibold text-slate-900">
+                <div className="text-sm font-semibold text-slate-900">
                   {domain.lastSyncedAt
-                    ? format(domain.lastSyncedAt, "MMM d, HH:mm")
+                    ? `${format(domain.lastSyncedAt, "PPp")} (Local Time)`
                     : "—"}
                 </div>
               </CardContent>

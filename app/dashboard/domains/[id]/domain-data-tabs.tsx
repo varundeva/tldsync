@@ -1,5 +1,7 @@
 "use client";
 
+import { format, isValid } from "date-fns";
+
 import {
   Card,
   CardContent,
@@ -344,6 +346,137 @@ export default function DomainDataTabs({
             </CardContent>
           </Card>
         )}
+
+        {/* CAA Records */}
+        {root?.CAA && root.CAA.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">CAA Records</CardTitle>
+              <CardDescription>Certificate Authority Authorization.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tag</TableHead>
+                    <TableHead>Value</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {root.CAA.map((caa, i) => {
+                    const isIodef = !!caa.iodef;
+                    const isIssueWild = !!caa.issuewild;
+                    const tag = isIodef ? "iodef" : isIssueWild ? "issuewild" : "issue";
+                    const value = caa.iodef || caa.issuewild || caa.issue || "unknown";
+                    return (
+                      <TableRow key={i}>
+                        <TableCell>
+                          <Badge variant="outline" className="font-mono text-xs">
+                            {tag}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="font-mono text-sm">
+                          {value}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* SRV Records */}
+        {root?.SRV && root.SRV.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">SRV Records</CardTitle>
+              <CardDescription>Service locator records.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service Target</TableHead>
+                    <TableHead>Port</TableHead>
+                    <TableHead>Priority</TableHead>
+                    <TableHead>Weight</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {root.SRV.map((srv, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono text-sm">{srv.name}</TableCell>
+                      <TableCell className="font-mono text-sm">{srv.port}</TableCell>
+                      <TableCell><Badge variant="outline" className="font-mono">{srv.priority}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="font-mono">{srv.weight}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* NAPTR Records */}
+        {root?.NAPTR && root.NAPTR.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">NAPTR Records</CardTitle>
+              <CardDescription>Name Authority Pointer records.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Service</TableHead>
+                    <TableHead>Flags</TableHead>
+                    <TableHead>Target/Regex</TableHead>
+                    <TableHead>Order</TableHead>
+                    <TableHead>Pref</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {root.NAPTR.map((naptr, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono text-sm">{naptr.service}</TableCell>
+                      <TableCell className="font-mono text-sm">{naptr.flags}</TableCell>
+                      <TableCell className="font-mono text-sm max-w-[200px] truncate" title={naptr.replacement || naptr.regexp}>
+                        {naptr.replacement || naptr.regexp}
+                      </TableCell>
+                      <TableCell><Badge variant="outline" className="font-mono">{naptr.order}</Badge></TableCell>
+                      <TableCell><Badge variant="outline" className="font-mono">{naptr.preference}</Badge></TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* PTR Records */}
+        {root?.PTR && root.PTR.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">PTR Records</CardTitle>
+              <CardDescription>Pointer records (usually for reverse DNS).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {root.PTR.map((ptr, i) => (
+                  <Badge
+                    key={i}
+                    variant="outline"
+                    className="font-mono text-sm px-3 py-1"
+                  >
+                    {ptr}
+                  </Badge>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </TabsContent>
 
       {/* ─── Subdomains Tab ────────────────────────────────── */}
@@ -402,10 +535,10 @@ export default function DomainDataTabs({
                           <Badge
                             variant="outline"
                             className={`font-mono text-xs ${row.type === "A"
-                                ? "border-blue-200 text-blue-700"
-                                : row.type === "AAAA"
-                                  ? "border-purple-200 text-purple-700"
-                                  : "border-amber-200 text-amber-700"
+                              ? "border-blue-200 text-blue-700"
+                              : row.type === "AAAA"
+                                ? "border-purple-200 text-purple-700"
+                                : "border-amber-200 text-amber-700"
                               }`}
                           >
                             {row.type}
@@ -578,10 +711,10 @@ export default function DomainDataTabs({
                     </div>
                     <Badge
                       className={`font-mono ${http.statusCode < 300
-                          ? "bg-emerald-100 text-emerald-700"
-                          : http.statusCode < 400
-                            ? "bg-amber-100 text-amber-700"
-                            : "bg-red-100 text-red-700"
+                        ? "bg-emerald-100 text-emerald-700"
+                        : http.statusCode < 400
+                          ? "bg-amber-100 text-amber-700"
+                          : "bg-red-100 text-red-700"
                         }`}
                     >
                       {http.statusCode}
@@ -719,13 +852,31 @@ export default function DomainDataTabs({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(whoisData).map(([key, value]) => {
                   if (!value || typeof value === "object") return null;
+
+                  let displayValue = String(value);
+                  const lowerKey = key.toLowerCase();
+
+                  // If the key suggests a date/time, try formatting it to local time
+                  if (
+                    lowerKey.includes("date") ||
+                    lowerKey.includes("time") ||
+                    lowerKey.includes("updated") ||
+                    lowerKey.includes("created") ||
+                    lowerKey.includes("expires")
+                  ) {
+                    const parsedDate = new Date(displayValue);
+                    if (isValid(parsedDate)) {
+                      displayValue = format(parsedDate, "PPp") + " (Local Time)";
+                    }
+                  }
+
                   return (
                     <div key={key} className="border-b border-slate-100 pb-2">
                       <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                         {key}
                       </div>
                       <div className="text-sm font-medium text-slate-900 break-all">
-                        {String(value)}
+                        {displayValue}
                       </div>
                     </div>
                   );

@@ -205,8 +205,8 @@ export default async function DashboardPage() {
                         {domain.verificationStatus === "verified" &&
                           domain.expirationDate ? (
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-600">
-                              {format(domain.expirationDate, "MMM d, yyyy")}
+                            <span className="text-slate-600 block text-xs">
+                              {format(domain.expirationDate, "PPp")} (Local Time)
                             </span>
                             {status && (
                               <Badge className={`${status.color} text-xs`}>
@@ -218,9 +218,9 @@ export default async function DashboardPage() {
                           <span className="text-slate-400">—</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-slate-500 text-sm">
+                      <TableCell className="text-slate-500 text-xs">
                         {domain.lastSyncedAt
-                          ? format(domain.lastSyncedAt, "MMM d, yyyy HH:mm")
+                          ? `${format(domain.lastSyncedAt, "PPp")} (Local Time)`
                           : "—"}
                       </TableCell>
                       <TableCell className="text-right">
