@@ -33,7 +33,7 @@ export default function LoginPage() {
     <div className="flex items-center justify-center min-h-screen bg-slate-50">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">Login</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Login to TLDsync</CardTitle>
           <CardDescription className="text-center">Enter your credentials to access your dashboard.</CardDescription>
         </CardHeader>
         <form onSubmit={handleLogin}>

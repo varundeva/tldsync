@@ -35,7 +35,7 @@ export default function RegisterPage() {
     <div className="flex items-center justify-center min-h-screen bg-slate-50">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl font-bold text-center">Register</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Register for TLDsync</CardTitle>
           <CardDescription className="text-center">Create a new account to track your domains.</CardDescription>
         </CardHeader>
         <form onSubmit={handleRegister}>
