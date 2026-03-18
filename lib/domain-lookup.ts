@@ -1,7 +1,7 @@
 import dns from "dns/promises";
 import tls from "tls";
-import net from "net";
 import whois from "whois-parsed";
+import { fetchRdap } from "./rdap";
 
 // ─── Custom WHOIS Lookup ────────────────────────────────────
 
@@ -12,112 +12,73 @@ export interface WhoisInfo {
     raw: Record<string, string>;
 }
 
-async function rawWhois(
-    domain: string,
-    server: string = "whois.iana.org"
-): Promise<string> {
-    return new Promise((resolve, reject) => {
-        let data = "";
-        const socket = net.createConnection(43, server, () => {
-            socket.write(`${domain}\r\n`);
-        });
-        socket.on("data", (chunk) => {
-            data += chunk;
-        });
-        socket.on("end", () => {
-            resolve(data);
-        });
-        socket.on("error", (err) => {
-            reject(err);
-        });
-        socket.setTimeout(4000, () => {
-            socket.destroy();
-            reject(new Error("WHOIS timeout"));
-        });
-    });
-}
-
 export async function fetchWhoisInfo(domain: string): Promise<WhoisInfo | null> {
+    // ── 1. Primary: whois-parsed npm package ────────────────────────────────
     try {
-        // 1. Try primary method: whois-parsed NPM package (with strict timeout)
-        try {
-            const parsedData = (await Promise.race([
-                whois.lookup(domain),
-                new Promise((_, reject) =>
-                    setTimeout(() => reject(new Error("whois-parsed timeout")), 4000)
-                ),
-            ])) as any;
-            if (parsedData && parsedData.domainName) {
-                return {
-                    registrar: parsedData.registrar || null,
-                    creationDate: parsedData.creationDate || null,
-                    expirationDate: parsedData.expirationDate || null,
-                    raw: JSON.parse(JSON.stringify(parsedData)) as Record<string, string>,
-                };
-            }
-        } catch (npmError) {
-            console.warn(`[whois-parsed] Failed for ${domain}, falling back to raw rawWhois method...`);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsedData = (await Promise.race([
+            whois.lookup(domain),
+            new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("whois-parsed timeout")), 4000)
+            ),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ])) as any;
+        if (parsedData && parsedData.domainName) {
+            console.log(`[whois] Primary (whois-parsed) succeeded for ${domain}`);
+            return {
+                registrar: parsedData.registrar || null,
+                creationDate: parsedData.creationDate || null,
+                expirationDate: parsedData.expirationDate || null,
+                raw: JSON.parse(JSON.stringify(parsedData)) as Record<string, string>,
+            };
         }
+        console.warn(`[whois] Primary returned no domainName for ${domain}, falling back to RDAP...`);
+    } catch {
+        console.warn(`[whois] Primary (whois-parsed) failed for ${domain}, falling back to RDAP...`);
+    }
 
-        // 2. Fallback: Custom raw TCP method
-        // Get registry server from IANA
-        const rawIana = await rawWhois(domain);
-        let targetServer = "whois.iana.org";
+    // ── 2. Fallback: RDAP (HTTPS JSON — ICANN-mandated standard) ────────────
+    try {
+        const rdap = await fetchRdap(domain);
+        console.log(`[whois] Fallback (RDAP) succeeded for ${domain}`);
 
-        const match = rawIana.match(/whois:\s+([a-zA-Z0-9.-]+)/i);
-        if (match && match[1]) {
-            targetServer = match[1];
-        } else {
-            // Fallbacks
-            if (domain.endsWith(".com") || domain.endsWith(".net")) {
-                targetServer = "whois.verisign-grs.com";
-            } else if (domain.endsWith(".org")) {
-                targetServer = "whois.pir.org";
-            } else if (domain.endsWith(".in")) {
-                targetServer = "whois.nixiregistry.in";
-            }
-        }
-
-        // 2. Query target server
-        const rawData = await rawWhois(domain, targetServer);
-
-        // 3. Parse raw data
-        const lines = rawData.split(/\r?\n/);
-        const parsed: Record<string, string> = {};
-        let registrar: string | null = null;
-        let creationDate: string | null = null;
-        let expirationDate: string | null = null;
-
-        for (const line of lines) {
-            if (line.trim().startsWith("%") || line.trim().startsWith("#")) continue;
-
-            const parts = line.split(/:(.*)/);
-            if (parts.length < 2) continue;
-
-            const key = parts[0].trim();
-            const value = parts[1].trim();
-            if (!key || !value) continue;
-
-            parsed[key] = value;
-            const lowerKey = key.toLowerCase();
-
-            if (lowerKey === "registrar") registrar = value;
-            if (lowerKey === "creation date") creationDate = value;
-            if (lowerKey === "registry expiry date" || lowerKey === "registrar registration expiration date") {
-                expirationDate = value;
-            }
-        }
+        // Map RDAP result → WhoisInfo shape so all callers remain unchanged
+        const raw: Record<string, string> = {
+            domain: rdap.domain,
+            ...(rdap.handle && { handle: rdap.handle }),
+            ...(rdap.registrar && { registrar: rdap.registrar }),
+            ...(rdap.registrarUrl && { registrarUrl: rdap.registrarUrl }),
+            ...(rdap.registrarIanaId && { registrarIanaId: rdap.registrarIanaId }),
+            ...(rdap.registrarAbuseEmail && { registrarAbuseEmail: rdap.registrarAbuseEmail }),
+            ...(rdap.registrarAbusePhone && { registrarAbusePhone: rdap.registrarAbusePhone }),
+            ...(rdap.whoisServer && { whoisServer: rdap.whoisServer }),
+            ...(rdap.createdDate && { creationDate: rdap.createdDate }),
+            ...(rdap.updatedDate && { updatedDate: rdap.updatedDate }),
+            ...(rdap.expiryDate && { expirationDate: rdap.expiryDate }),
+            ...(rdap.transferDate && { transferDate: rdap.transferDate }),
+            nameservers: rdap.nameservers.join(', '),
+            status: rdap.status.join(', '),
+            dnssec: String(rdap.dnssec),
+            ...(rdap.rdapUrl && { rdapUrl: rdap.rdapUrl }),
+            ...(rdap.registrant?.name && { registrantName: rdap.registrant.name }),
+            ...(rdap.registrant?.org && { registrantOrg: rdap.registrant.org }),
+            ...(rdap.registrant?.email && { registrantEmail: rdap.registrant.email }),
+            ...(rdap.registrant?.address && { registrantAddress: rdap.registrant.address }),
+        };
 
         return {
-            registrar,
-            creationDate,
-            expirationDate,
-            raw: parsed,
+            registrar: rdap.registrar ?? null,
+            creationDate: rdap.createdDate ?? null,
+            expirationDate: rdap.expiryDate ?? null,
+            raw,
         };
-    } catch (error) {
-        console.error("Custom WHOIS Error:", error);
-        return null;
+    } catch (rdapError) {
+        console.error(`[whois] Fallback (RDAP) also failed for ${domain}:`, rdapError);
     }
+
+    // All methods exhausted
+    console.error(`[whois] All lookup methods failed for ${domain}`);
+    return null;
 }
 
 // ─── Common subdomains to probe ─────────────────────────────
