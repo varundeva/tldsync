@@ -6,7 +6,7 @@ export const auth = betterAuth({
     secret: process.env.BETTER_AUTH_SECRET || "fallback_secret_for_dev_only",
     baseURL: process.env.APP_URL || "http://localhost:3000",
     database: drizzleAdapter(db, {
-        provider: "sqlite",
+        provider: "pg",
     }),
     emailAndPassword: {
         enabled: true,
