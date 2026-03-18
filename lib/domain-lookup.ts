@@ -146,6 +146,7 @@ export interface SubdomainRecord {
     A: string[];
     AAAA: string[];
     CNAME: string[];
+    source: "ct" | "dns" | "ct+dns";  // how it was discovered
 }
 
 export interface SslInfo {
@@ -182,7 +183,6 @@ export interface ComprehensiveDomainData {
     http: HttpInfo | null;
 }
 
-import fs from "fs";
 
 async function fetchRootDns(domain: string): Promise<DnsRecordSet> {
     const [a, aaaa, mx, txt, cname, ns, soa, caa, srv, naptr, ptr] = await Promise.allSettled([
@@ -220,54 +220,136 @@ async function fetchRootDns(domain: string): Promise<DnsRecordSet> {
     };
 }
 
+// ─── CT Log lookup via crt.sh ──────────────────────────────
+
+async function fetchCtSubdomains(domain: string): Promise<string[]> {
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+        const res = await fetch(
+            `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
+            {
+                signal: controller.signal,
+                headers: { Accept: "application/json" },
+            }
+        );
+        clearTimeout(timeoutId);
+
+        if (!res.ok) {
+            console.warn(`[ct] crt.sh returned ${res.status} for ${domain}`);
+            return [];
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const entries: any[] = await res.json();
+
+        // Each entry has a name_value field which may contain newline-separated names
+        const names = new Set<string>();
+        for (const entry of entries) {
+            const raw: string = entry.name_value ?? entry.common_name ?? "";
+            for (const n of raw.split("\n")) {
+                const name = n.trim().toLowerCase();
+                // Filter out: wildcards, the apex domain itself, and empty strings
+                if (
+                    name &&
+                    !name.startsWith("*") &&
+                    name !== domain &&
+                    name.endsWith(`.${domain}`)
+                ) {
+                    names.add(name);
+                }
+            }
+        }
+
+        console.log(`[ct] crt.sh found ${names.size} unique subdomains for ${domain}`);
+        return Array.from(names);
+    } catch (err) {
+        console.warn(`[ct] crt.sh lookup failed for ${domain}:`, err);
+        return [];
+    }
+}
+
+// ─── DNS probe a single hostname ─────────────────────────────
+
+async function probeDns(
+    sub: string,
+    fullDomain: string
+): Promise<SubdomainRecord | null> {
+    const [a, aaaa, cname] = await Promise.allSettled([
+        dns.resolve4(fullDomain).catch(() => [] as string[]),
+        dns.resolve6(fullDomain).catch(() => [] as string[]),
+        dns.resolveCname(fullDomain).catch(() => [] as string[]),
+    ]);
+
+    const aRecords   = a.status     === "fulfilled" ? (a.value     as string[]) : [];
+    const aaaaRecords = aaaa.status === "fulfilled" ? (aaaa.value as string[]) : [];
+    const cnameRecords = cname.status === "fulfilled" ? (cname.value as string[]) : [];
+
+    if (aRecords.length === 0 && aaaaRecords.length === 0 && cnameRecords.length === 0) {
+        return null;
+    }
+
+    return { name: sub, fullDomain, A: aRecords, AAAA: aaaaRecords, CNAME: cnameRecords, source: "dns" };
+}
+
 // ─── Discover subdomains ────────────────────────────────────
 
 async function discoverSubdomains(
     domain: string
 ): Promise<SubdomainRecord[]> {
-    const results: SubdomainRecord[] = [];
+    // Run both discovery methods in parallel
+    const [ctSubdomains, bruteForceResults] = await Promise.all([
+        // ── Method 1: Certificate Transparency logs (crt.sh) ──
+        fetchCtSubdomains(domain),
 
-    // Check all subdomains in parallel
-    const checks = COMMON_SUBDOMAINS.map(async (sub) => {
-        const fullDomain = `${sub}.${domain}`;
+        // ── Method 2: DNS brute force ──────────────────────────
+        Promise.all(
+            COMMON_SUBDOMAINS.map((sub) => probeDns(sub, `${sub}.${domain}`))
+        ),
+    ]);
 
-        const [a, aaaa, cname] = await Promise.allSettled([
-            dns.resolve4(fullDomain).catch(() => []),
-            dns.resolve6(fullDomain).catch(() => []),
-            dns.resolveCname(fullDomain).catch(() => []),
-        ]);
+    // Map to track merged results keyed by fullDomain
+    const merged = new Map<string, SubdomainRecord>();
 
-        const aRecords =
-            a.status === "fulfilled" ? (a.value as string[]) : [];
-        const aaaaRecords =
-            aaaa.status === "fulfilled" ? (aaaa.value as string[]) : [];
-        const cnameRecords =
-            cname.status === "fulfilled" ? (cname.value as string[]) : [];
-
-        // Only include if any records exist
-        if (
-            aRecords.length > 0 ||
-            aaaaRecords.length > 0 ||
-            cnameRecords.length > 0
-        ) {
-            return {
-                name: sub,
-                fullDomain,
-                A: aRecords,
-                AAAA: aaaaRecords,
-                CNAME: cnameRecords,
-            };
-        }
-        return null;
-    });
-
-    const settled = await Promise.all(checks);
-
-    for (const r of settled) {
-        if (r) results.push(r);
+    // Add brute-force DNS results first
+    for (const r of bruteForceResults) {
+        if (r) merged.set(r.fullDomain, r);
     }
 
-    return results.sort((a, b) => a.name.localeCompare(b.name));
+    // Now probe every CT subdomain that wasn't already brute-forced,
+    // and mark source appropriately
+    const ctProbes = ctSubdomains
+        .filter((full) => !COMMON_SUBDOMAINS.includes(full.replace(`.${domain}`, "").split(".")[0]) || !merged.has(full))
+        .map(async (fullDomain) => {
+            const sub = fullDomain.slice(0, fullDomain.length - domain.length - 1); // strip .domain
+            if (merged.has(fullDomain)) {
+                // Already found via DNS brute force — upgrade source to ct+dns
+                merged.get(fullDomain)!.source = "ct+dns";
+                return;
+            }
+            const probed = await probeDns(sub, fullDomain);
+            if (probed) {
+                probed.source = "ct+dns";
+                merged.set(fullDomain, probed);
+            } else {
+                // CT found it but DNS returned nothing live — still record with empty arrays
+                merged.set(fullDomain, {
+                    name: sub,
+                    fullDomain,
+                    A: [],
+                    AAAA: [],
+                    CNAME: [],
+                    source: "ct",
+                });
+            }
+        });
+
+    await Promise.all(ctProbes);
+
+    return Array.from(merged.values()).sort((a, b) =>
+        a.fullDomain.localeCompare(b.fullDomain)
+    );
 }
 
 // ─── Fetch SSL certificate info ─────────────────────────────
