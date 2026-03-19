@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { domains } from "@/db/schema";
+import { domains, user } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup/index";
+import { processAlerts } from "@/lib/notifications";
 
-// Vercel Cron Jobs automatically hit this endpoint based on vercel.json configuration.
-// By default, Vercel gives this endpoint 10 seconds to execute on Hobby plans, and up to 5 minutes on Pro plans (using maxDuration).
-export const maxDuration = 300; // Allows up to 5 minutes if on Pro, otherwise 10s or 60s fallback max.
+export const maxDuration = 300;
 
 export async function GET(request: Request) {
   // 1. Verify Authentication to prevent unauthorized abuse
@@ -19,13 +18,16 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 2. Fetch all domains mapped in the database
-    const allDomains = await db.query.domains.findMany({
-      where(fields, operators) {
-        return operators.eq(fields.verificationStatus, "verified");
-      },
-    });
-
+    // 2. Fetch all verified domains joined with their users to get the email address
+    const allDomains = await db
+      .select({
+        domain: domains,
+        userEmail: user.email,
+      })
+      .from(domains)
+      .innerJoin(user, eq(domains.userId, user.id))
+      .where(eq(domains.verificationStatus, "verified"));
+    
     if (allDomains.length === 0) {
       return NextResponse.json({ message: "No domains to sync", success: true });
     }
@@ -37,67 +39,45 @@ export async function GET(request: Request) {
       errors: [] as { domain: string; error: string }[],
     };
 
-    // 3. Process each domain iteratively to reduce memory spikes & rate limit bans from generic APIs
-    for (const domain of allDomains) {
+    // 3. Process each domain iteratively
+    for (const { domain, userEmail } of allDomains) {
       try {
         const now = new Date();
+        
+        // Track everything deeply for verified owners
+        const [whoisData, comprehensiveData] = await Promise.all([
+          fetchWhoisInfo(domain.domainName).catch(() => null),
+          fetchComprehensiveDomainData(domain.domainName).catch(() => null),
+        ]);
 
-        if (domain.verificationStatus === "verified") {
-          // Track everything deeply for verified owners
-          const [whoisData, comprehensiveData] = await Promise.all([
-            fetchWhoisInfo(domain.domainName).catch(() => null),
-            fetchComprehensiveDomainData(domain.domainName).catch(() => null),
-          ]);
+        const registrar = whoisData?.registrar || domain.registrar;
+        const registrationDate = whoisData?.creationDate
+          ? new Date(whoisData.creationDate)
+          : domain.registrationDate;
+        const expirationDate = whoisData?.expirationDate
+          ? new Date(whoisData.expirationDate)
+          : domain.expirationDate;
+        const nameServers = comprehensiveData?.root?.NS?.length
+          ? JSON.stringify(comprehensiveData.root.NS)
+          : domain.nameServers;
 
-          const registrar = whoisData?.registrar || domain.registrar;
-          const registrationDate = whoisData?.creationDate
-            ? new Date(whoisData.creationDate)
-            : domain.registrationDate;
-          const expirationDate = whoisData?.expirationDate
-            ? new Date(whoisData.expirationDate)
-            : domain.expirationDate;
-          const nameServers = comprehensiveData?.root?.NS?.length
-            ? JSON.stringify(comprehensiveData.root.NS)
-            : domain.nameServers;
+        await db
+          .update(domains)
+          .set({
+            registrar,
+            registrationDate,
+            expirationDate,
+            nameServers,
+            whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
+            dnsRecords: comprehensiveData ? JSON.stringify(comprehensiveData) : domain.dnsRecords,
+            lastSyncedAt: now,
+            updatedAt: now,
+          })
+          .where(eq(domains.id, domain.id));
 
-          await db
-            .update(domains)
-            .set({
-              registrar,
-              registrationDate,
-              expirationDate,
-              nameServers,
-              whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
-              dnsRecords: comprehensiveData ? JSON.stringify(comprehensiveData) : domain.dnsRecords,
-              lastSyncedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(domains.id, domain.id));
-
-        } else {
-          // Unverified Tracking: Only refresh WHOIS
-          const whoisData = await fetchWhoisInfo(domain.domainName).catch(() => null);
-
-          const registrar = whoisData?.registrar || domain.registrar;
-          const registrationDate = whoisData?.creationDate
-            ? new Date(whoisData.creationDate)
-            : domain.registrationDate;
-          const expirationDate = whoisData?.expirationDate
-            ? new Date(whoisData.expirationDate)
-            : domain.expirationDate;
-
-          await db
-            .update(domains)
-            .set({
-              registrar,
-              registrationDate,
-              expirationDate,
-              whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
-              lastSyncedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(domains.id, domain.id));
-        }
+        // 4. Trigger Alert module evaluation
+        const sslValidTo = comprehensiveData?.ssl?.validTo || null;
+        await processAlerts(domain.domainName, userEmail, expirationDate, sslValidTo);
 
         results.successful++;
       } catch (err: any) {

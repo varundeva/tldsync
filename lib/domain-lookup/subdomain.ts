@@ -11,7 +11,7 @@ const COMMON_SUBDOMAINS = [
 async function fetchCtSubdomains(domain: string): Promise<string[]> {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 8000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
 
         const res = await fetch(
             `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
@@ -24,7 +24,7 @@ async function fetchCtSubdomains(domain: string): Promise<string[]> {
             return [];
         }
 
-         
+
         const entries: any[] = await res.json();
         const names = new Set<string>();
 
