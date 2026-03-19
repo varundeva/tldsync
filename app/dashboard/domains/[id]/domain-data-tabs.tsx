@@ -91,7 +91,7 @@ export default function DomainDataTabs({
 
   return (
     <Tabs defaultValue="dns" className="w-full">
-      <TabsList className="grid w-full max-w-2xl grid-cols-5 mb-6">
+      <TabsList className="grid grid-cols-3 sm:grid-cols-5 w-full max-w-2xl h-auto gap-1 mb-6">
         <TabsTrigger value="dns" className="flex items-center gap-1.5 text-xs">
           <Server className="w-3.5 h-3.5" />
           DNS
@@ -140,7 +140,7 @@ export default function DomainDataTabs({
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div>
                   <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                     Primary NS
@@ -704,7 +704,7 @@ export default function DomainDataTabs({
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                   <div>
                     <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                       Status

@@ -80,7 +80,7 @@ export default async function DomainDetailsPage({
           <ArrowLeft className="w-4 h-4 mr-1" />
           Back to Dashboard
         </Link>
-        <div className="flex justify-between items-start">
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center items-start gap-4">
           <div>
             <h1 className="text-3xl font-bold tracking-tight text-slate-900 flex items-center gap-3">
               {domain.domainName}
@@ -102,7 +102,7 @@ export default async function DomainDetailsPage({
                 : "Complete verification to fetch domain data"}
             </p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-3">
             {isVerified && (
               <>
                 <Badge
@@ -133,7 +133,7 @@ export default async function DomainDetailsPage({
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <div className="text-xs text-amber-600 uppercase tracking-wider mb-1 font-medium">
                   Type
