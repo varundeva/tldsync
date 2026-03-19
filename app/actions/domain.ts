@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import dns from "dns/promises";
-import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup";
+import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup/index";
 
 // ─── Schemas ─────────────────────────────────────────────────
 

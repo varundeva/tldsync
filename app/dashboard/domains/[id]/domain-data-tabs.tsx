@@ -33,7 +33,7 @@ import type {
   ComprehensiveDomainData,
   SslInfo,
   HttpInfo,
-} from "@/lib/domain-lookup";
+} from "@/lib/domain-lookup/index";
 
 interface DomainDataTabsProps {
   dnsRecords: ComprehensiveDomainData | null;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import dns from "dns/promises";
-import { fetchWhoisInfo } from "@/lib/domain-lookup";
+import { fetchWhoisInfo } from "@/lib/domain-lookup/index";
 
 export async function GET(
   req: NextRequest,
