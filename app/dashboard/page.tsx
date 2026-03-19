@@ -63,13 +63,13 @@ export default async function DashboardPage() {
       case "verified":
         return (
           <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 border border-emerald-200">
-            Verified
+            Verified Owner
           </Badge>
         );
       case "pending":
         return (
-          <Badge className="bg-amber-100 text-amber-700 hover:bg-amber-200 border border-amber-200">
-            Pending
+          <Badge className="bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
+            Tracking Only
           </Badge>
         );
       default:
@@ -88,7 +88,7 @@ export default async function DashboardPage() {
     (d) => d.verificationStatus === "pending"
   ).length;
   const expiringCount = userDomains.filter((d) => {
-    if (!d.expirationDate || d.verificationStatus !== "verified") return false;
+    if (!d.expirationDate) return false;
     const daysLeft = differenceInDays(d.expirationDate, new Date());
     return daysLeft >= 0 && daysLeft <= 30;
   }).length;
@@ -126,7 +126,7 @@ export default async function DashboardPage() {
                 {pendingCount}
               </div>
               <div className="text-xs text-amber-600 font-medium uppercase tracking-wider">
-                Pending Verification
+                Tracked Only
               </div>
             </CardContent>
           </Card>
@@ -176,10 +176,7 @@ export default async function DashboardPage() {
               </TableHeader>
               <TableBody>
                 {userDomains.map((domain) => {
-                  const status =
-                    domain.verificationStatus === "verified"
-                      ? getExpirationStatus(domain.expirationDate)
-                      : null;
+                  const status = getExpirationStatus(domain.expirationDate);
                   return (
                     <TableRow
                       key={domain.id}
@@ -197,13 +194,10 @@ export default async function DashboardPage() {
                         {getVerificationBadge(domain.verificationStatus)}
                       </TableCell>
                       <TableCell className="text-slate-600">
-                        {domain.verificationStatus === "verified"
-                          ? domain.registrar || "—"
-                          : "—"}
+                        {domain.registrar || "—"}
                       </TableCell>
                       <TableCell>
-                        {domain.verificationStatus === "verified" &&
-                          domain.expirationDate ? (
+                        {domain.expirationDate ? (
                           <div className="flex items-center gap-2">
                             <span className="text-slate-600 block text-xs">
                               {format(domain.expirationDate, "PPp")} (Local Time)

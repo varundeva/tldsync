@@ -38,6 +38,7 @@ import type {
 interface DomainDataTabsProps {
   dnsRecords: ComprehensiveDomainData | null;
   whoisData: Record<string, unknown> | null;
+  isVerified: boolean;
 }
 
 // ─── Helper: Security Header Check ─────────────────────────
@@ -72,6 +73,7 @@ function SecurityCheck({
 export default function DomainDataTabs({
   dnsRecords,
   whoisData,
+  isVerified
 }: DomainDataTabsProps) {
   const data = dnsRecords;
   const root = data?.root;
@@ -90,14 +92,15 @@ export default function DomainDataTabs({
   }
 
   return (
-    <Tabs defaultValue="dns" className="w-full">
+    <Tabs defaultValue={isVerified ? "dns" : "whois"} className="w-full">
       <TabsList className="grid grid-cols-3 sm:grid-cols-5 w-full max-w-2xl h-auto gap-1 mb-6">
-        <TabsTrigger value="dns" className="flex items-center gap-1.5 text-xs">
+        <TabsTrigger value="dns" disabled={!isVerified} className="flex items-center gap-1.5 text-xs">
           <Server className="w-3.5 h-3.5" />
           DNS
         </TabsTrigger>
         <TabsTrigger
           value="subdomains"
+          disabled={!isVerified}
           className="flex items-center gap-1.5 text-xs"
         >
           <Network className="w-3.5 h-3.5" />
@@ -111,11 +114,11 @@ export default function DomainDataTabs({
             </Badge>
           )}
         </TabsTrigger>
-        <TabsTrigger value="ssl" className="flex items-center gap-1.5 text-xs">
+        <TabsTrigger value="ssl" disabled={!isVerified} className="flex items-center gap-1.5 text-xs">
           <Lock className="w-3.5 h-3.5" />
           SSL
         </TabsTrigger>
-        <TabsTrigger value="http" className="flex items-center gap-1.5 text-xs">
+        <TabsTrigger value="http" disabled={!isVerified} className="flex items-center gap-1.5 text-xs">
           <Globe className="w-3.5 h-3.5" />
           HTTP
         </TabsTrigger>

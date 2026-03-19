@@ -66,12 +66,28 @@ export async function addDomain(formData: FormData) {
     const now = new Date();
     const domainId = crypto.randomUUID();
 
+    // Pre-fetch WHOIS data immediately so unverified owners can track publicly available data
+    const whoisData = await fetchWhoisInfo(parsed.data.domainName).catch(() => null);
+
+    const registrar = whoisData?.registrar || null;
+    const registrationDate = whoisData?.creationDate
+      ? new Date(whoisData.creationDate)
+      : null;
+    const expirationDate = whoisData?.expirationDate
+      ? new Date(whoisData.expirationDate)
+      : null;
+
     await db.insert(domains).values({
       id: domainId,
       userId: user.id,
       domainName: parsed.data.domainName,
       verificationToken,
       verificationStatus: "pending",
+      registrar,
+      registrationDate,
+      expirationDate,
+      whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : null,
+      lastSyncedAt: now,
       createdAt: now,
       updatedAt: now,
     });
@@ -191,7 +207,37 @@ export async function syncDomain(domainId: string) {
   if (!domain) return { error: "Domain not found" };
 
   if (domain.verificationStatus !== "verified") {
-    return { error: "Domain must be verified before syncing" };
+    try {
+      const whoisData = await fetchWhoisInfo(domain.domainName).catch(() => null);
+      const now = new Date();
+
+      const registrar = whoisData?.registrar || domain.registrar;
+      const registrationDate = whoisData?.creationDate
+        ? new Date(whoisData.creationDate)
+        : domain.registrationDate;
+      const expirationDate = whoisData?.expirationDate
+        ? new Date(whoisData.expirationDate)
+        : domain.expirationDate;
+
+      await db
+        .update(domains)
+        .set({
+          registrar,
+          registrationDate,
+          expirationDate,
+          whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
+          lastSyncedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(domains.id, domainId));
+
+      revalidatePath("/dashboard");
+      revalidatePath(`/dashboard/domains/${domainId}`);
+      return { success: true, syncedAt: now.toISOString() };
+    } catch (error) {
+      console.error("Error syncing unverified domain:", error);
+      return { error: "Failed to sync public domain data" };
+    }
   }
 
   try {
