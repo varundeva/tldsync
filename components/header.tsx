@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Globe, Github } from "lucide-react";
+import { Globe, Github, Settings } from "lucide-react";
 
 export function Header({
   email,
@@ -27,6 +27,13 @@ export function Header({
             title="GitHub Repository"
           >
             <Github className="w-5 h-5" />
+          </Link>
+          <Link
+            href="/dashboard/settings"
+            className="text-slate-400 hover:text-slate-900 transition-colors flex items-center"
+            title="Settings"
+          >
+            <Settings className="w-5 h-5" />
           </Link>
           <span className="text-sm font-medium text-slate-600 hidden sm:inline-block">
             {email}

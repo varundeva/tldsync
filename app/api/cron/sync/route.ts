@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { domains, user } from "@/db/schema";
+import { domains, user, userSettings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup/index";
 import { processAlerts } from "@/lib/notifications";
+import type { NotificationChannels } from "@/lib/types/settings";
+import { sendDiscordSyncReport, type SyncReportDomain } from "@/lib/discord";
 
 export const maxDuration = 300;
 
@@ -23,6 +25,7 @@ export async function GET(request: Request) {
       .select({
         domain: domains,
         userEmail: user.email,
+        userId: user.id,
       })
       .from(domains)
       .innerJoin(user, eq(domains.userId, user.id))
@@ -39,8 +42,11 @@ export async function GET(request: Request) {
       errors: [] as { domain: string; error: string }[],
     };
 
+    // Group domains by user for sync reports
+    const userDomainMap = new Map<string, { email: string; domains: SyncReportDomain[] }>();
+
     // 3. Process each domain iteratively
-    for (const { domain, userEmail } of allDomains) {
+    for (const { domain, userEmail, userId } of allDomains) {
       try {
         const now = new Date();
         
@@ -75,9 +81,20 @@ export async function GET(request: Request) {
           })
           .where(eq(domains.id, domain.id));
 
-        // 4. Trigger Alert module evaluation
+        // 4. Trigger Alert module evaluation (now with userId for settings lookup)
         const sslValidTo = comprehensiveData?.ssl?.validTo || null;
-        await processAlerts(domain.domainName, userEmail, expirationDate, sslValidTo);
+        await processAlerts(domain.domainName, userEmail, expirationDate, sslValidTo, userId);
+
+        // Collect domains for sync report
+        if (!userDomainMap.has(userId)) {
+          userDomainMap.set(userId, { email: userEmail, domains: [] });
+        }
+        userDomainMap.get(userId)!.domains.push({
+          domainName: domain.domainName,
+          expirationDate,
+          registrar,
+          status: domain.verificationStatus,
+        });
 
         results.successful++;
       } catch (err: any) {
@@ -87,6 +104,29 @@ export async function GET(request: Request) {
           domain: domain.domainName,
           error: err.message || "Unknown error occurred",
         });
+      }
+    }
+
+    // 5. Send sync reports to users who have it enabled
+    for (const [userId, userData] of userDomainMap) {
+      try {
+        const settings = await db.query.userSettings.findFirst({
+          where: eq(userSettings.userId, userId),
+        });
+
+        if (!settings || !settings.notificationsEnabled) continue;
+
+        const channels = settings.channels as NotificationChannels;
+
+        if (
+          channels.discord?.enabled &&
+          channels.discord.webhookUrl &&
+          channels.discord.events?.includes("sync_report")
+        ) {
+          await sendDiscordSyncReport(channels.discord.webhookUrl, userData.domains);
+        }
+      } catch (err) {
+        console.error(`Sync report failed for user ${userId}:`, err);
       }
     }
 

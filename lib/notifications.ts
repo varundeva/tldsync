@@ -1,5 +1,10 @@
 import nodemailer from "nodemailer";
 import { differenceInDays } from "date-fns";
+import { db } from "@/db";
+import { userSettings } from "@/db/schema";
+import { eq } from "drizzle-orm";
+import type { NotificationChannels } from "@/lib/types/settings";
+import { sendDiscordExpiryAlert } from "@/lib/discord";
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587");
@@ -17,27 +22,90 @@ export const transporter = nodemailer.createTransport({
   },
 });
 
+// ─── Fetch user notification settings ───────────────────────
+
+async function getUserNotificationSettings(userId: string): Promise<{
+  notificationsEnabled: boolean;
+  channels: NotificationChannels;
+} | null> {
+  const settings = await db.query.userSettings.findFirst({
+    where: eq(userSettings.userId, userId),
+  });
+
+  if (!settings) {
+    // No settings = default behaviour (email only)
+    return {
+      notificationsEnabled: true,
+      channels: {
+        email: { enabled: true, events: ["domain_expiry", "ssl_expiry"] },
+      },
+    };
+  }
+
+  return {
+    notificationsEnabled: settings.notificationsEnabled,
+    channels: settings.channels as NotificationChannels,
+  };
+}
+
+// ─── Main Alert Processor ───────────────────────────────────
+
 export async function processAlerts(
   domainName: string,
   userEmail: string,
   expirationDate: Date | null,
-  sslValidTo: string | null
+  sslValidTo: string | null,
+  userId?: string
 ) {
-  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
-    console.warn("SMTP credentials missing. Notifications skipped.");
+  const milestones = [60, 30, 14, 3, 2, 1];
+  const now = new Date();
+
+  // Fetch user settings if userId is available
+  let settings: { notificationsEnabled: boolean; channels: NotificationChannels } | null = null;
+  if (userId) {
+    settings = await getUserNotificationSettings(userId);
+  }
+
+  // If notifications are globally disabled, skip everything
+  if (settings && !settings.notificationsEnabled) {
+    console.log(`Notifications disabled for ${userEmail}, skipping alerts.`);
     return;
   }
 
-  const milestones = [60, 30, 14, 3, 2, 1];
-  const now = new Date();
+  const channels = settings?.channels ?? {
+    email: { enabled: true, events: ["domain_expiry", "ssl_expiry"] as const },
+  };
 
   // 1. Check Domain Expiration
   if (expirationDate) {
     const domainDaysLeft = differenceInDays(expirationDate, now);
 
-    // We only alert EXACTLY on the milestone days when the cron job runs
     if (milestones.includes(domainDaysLeft)) {
-      await sendDomainAlert(userEmail, domainName, domainDaysLeft, "Domain Registration");
+      // Email alert
+      if (
+        channels.email?.enabled !== false &&
+        (channels.email?.events?.includes("domain_expiry") ?? true)
+      ) {
+        await sendEmailAlert(userEmail, domainName, domainDaysLeft, "Domain Registration");
+      }
+
+      // Discord alert
+      if (
+        channels.discord?.enabled &&
+        channels.discord.webhookUrl &&
+        channels.discord.events?.includes("domain_expiry")
+      ) {
+        try {
+          await sendDiscordExpiryAlert(
+            channels.discord.webhookUrl,
+            domainName,
+            domainDaysLeft,
+            "Domain Registration"
+          );
+        } catch (err) {
+          console.error(`Discord alert failed for ${domainName}:`, err);
+        }
+      }
     }
   }
 
@@ -47,17 +115,48 @@ export async function processAlerts(
     const sslDaysLeft = differenceInDays(sslDate, now);
 
     if (milestones.includes(sslDaysLeft)) {
-      await sendDomainAlert(userEmail, domainName, sslDaysLeft, "SSL Certificate");
+      // Email alert
+      if (
+        channels.email?.enabled !== false &&
+        (channels.email?.events?.includes("ssl_expiry") ?? true)
+      ) {
+        await sendEmailAlert(userEmail, domainName, sslDaysLeft, "SSL Certificate");
+      }
+
+      // Discord alert
+      if (
+        channels.discord?.enabled &&
+        channels.discord.webhookUrl &&
+        channels.discord.events?.includes("ssl_expiry")
+      ) {
+        try {
+          await sendDiscordExpiryAlert(
+            channels.discord.webhookUrl,
+            domainName,
+            sslDaysLeft,
+            "SSL Certificate"
+          );
+        } catch (err) {
+          console.error(`Discord SSL alert failed for ${domainName}:`, err);
+        }
+      }
     }
   }
 }
 
-async function sendDomainAlert(
+// ─── Email Alert ────────────────────────────────────────────
+
+async function sendEmailAlert(
   to: string,
   domainName: string,
   daysLeft: number,
   type: "Domain Registration" | "SSL Certificate"
 ) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+    console.warn("SMTP credentials missing. Email notification skipped.");
+    return;
+  }
+
   const subject = `Urgent: ${domainName} ${type} expires in ${daysLeft} days!`;
 
   const alertColor = daysLeft <= 3 ? '#ef4444' : '#f59e0b';
@@ -94,8 +193,8 @@ async function sendDomainAlert(
       subject,
       html,
     });
-    console.log(`Alert sent for ${domainName} - ${type} (${daysLeft} days)`);
+    console.log(`Email alert sent for ${domainName} - ${type} (${daysLeft} days)`);
   } catch (err) {
-    console.error(`Failed to send alert for ${domainName}:`, err);
+    console.error(`Failed to send email alert for ${domainName}:`, err);
   }
 }

@@ -1,4 +1,4 @@
-import { pgTable, text, boolean, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
 	id: text("id").primaryKey(),
@@ -68,6 +68,23 @@ export const domains = pgTable("domains", {
 
 	// Sync tracking
 	lastSyncedAt: timestamp("lastSyncedAt"),
+
+	createdAt: timestamp("createdAt").notNull(),
+	updatedAt: timestamp("updatedAt").notNull(),
+});
+
+// ─── User Settings ─────────────────────────────────────────
+// JSONB `channels` stores per-channel notification config.
+// Shape: { discord?: { webhookUrl, enabled, events[] }, slack?: { ... }, ... }
+export const userSettings = pgTable("user_settings", {
+	id: text("id").primaryKey(),
+	userId: text("userId").notNull().references(() => user.id).unique(),
+
+	// Global notification master switch
+	notificationsEnabled: boolean("notificationsEnabled").notNull().default(true),
+
+	// JSONB column – schema-less per-channel config
+	channels: jsonb("channels").notNull().default({}),
 
 	createdAt: timestamp("createdAt").notNull(),
 	updatedAt: timestamp("updatedAt").notNull(),
