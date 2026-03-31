@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getUserSettings } from "@/app/actions/settings";
+import { getCurrentUserProfile } from "@/app/actions/profile";
 import SettingsClient from "./settings-client";
 import type { NotificationChannels } from "@/lib/types/settings";
 
@@ -8,7 +9,10 @@ export const metadata: Metadata = {
 };
 
 export default async function SettingsPage() {
-  const settings = await getUserSettings();
+  const [settings, profile] = await Promise.all([
+    getUserSettings(),
+    getCurrentUserProfile(),
+  ]);
 
   const initialData = {
     notificationsEnabled: settings?.notificationsEnabled ?? true,
@@ -18,6 +22,13 @@ export default async function SettingsPage() {
         events: ["domain_expiry", "ssl_expiry"] as const,
       },
     },
+  };
+
+  const userProfile = {
+    name: profile?.name ?? "",
+    email: profile?.email ?? "",
+    emailVerified: profile?.emailVerified ?? false,
+    memberSince: profile?.createdAt ? new Date(profile.createdAt).toLocaleDateString("en-US", { month: "long", year: "numeric" }) : "",
   };
 
   return (
@@ -33,7 +44,7 @@ export default async function SettingsPage() {
       </div>
 
       {/* Settings Shell */}
-      <SettingsClient initialData={initialData} />
+      <SettingsClient initialData={initialData} userProfile={userProfile} />
     </div>
   );
 }
