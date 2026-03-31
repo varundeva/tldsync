@@ -88,7 +88,7 @@ export default function PricingPage() {
         <div className="mt-24 max-w-3xl mx-auto bg-slate-100 dark:bg-slate-800/50 rounded-2xl p-8 sm:p-12 text-center border border-slate-200 dark:border-slate-700/50 shadow-sm">
           <h2 className="text-2xl sm:text-3xl font-bold mb-4 text-slate-900 dark:text-white">Need to track more domains?</h2>
           <p className="text-lg text-slate-600 dark:text-slate-400 mb-8">
-            If you're managing thousands of domains for your agency or enterprise, we can tailor a custom plan that scales exactly to your needs.
+            If you&apos;re managing thousands of domains for your agency or enterprise, we can tailor a custom plan that scales exactly to your needs.
           </p>
           <Link href="/contact" className="inline-flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold px-8 py-3.5 rounded-xl transition-colors shadow-sm">
             Contact Us

@@ -29,7 +29,7 @@ export default function PrivacyPage() {
               We collect several types of information from and about users of our Website, including information:
             </p>
             <ul className="list-disc pl-6 space-y-2">
-              <li>By which you may be personally identified, such as name and e-mail address ("personal information").</li>
+              <li>By which you may be personally identified, such as name and e-mail address (&quot;personal information&quot;).</li>
               <li>That is about you but individually does not identify you, such as domain tracking preferences.</li>
               <li>About your internet connection, the equipment you use to access our Website, and usage details.</li>
             </ul>

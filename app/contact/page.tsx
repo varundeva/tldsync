@@ -14,7 +14,7 @@ export default function ContactPage() {
       <main className="flex-1 max-w-3xl mx-auto px-4 sm:px-6 py-24 w-full">
         <h1 className="text-4xl font-extrabold tracking-tight mb-8">Contact Us</h1>
         <p className="text-lg text-slate-600 dark:text-slate-400 mb-12">
-          We'd love to hear from you. Whether you have a question about features, pricing, or anything else, our team is ready to answer all your questions.
+          We&apos;d love to hear from you. Whether you have a question about features, pricing, or anything else, our team is ready to answer all your questions.
         </p>
 
         <form className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-8 shadow-sm space-y-6">

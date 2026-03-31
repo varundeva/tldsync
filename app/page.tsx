@@ -254,7 +254,7 @@ export default function LandingPage() {
                   Webhooks built right in.
                 </h2>
                 <p className="text-lg text-slate-600 dark:text-slate-400 mb-8">
-                  TLDsync isn't just a dashboard. It's a proactive intelligence engine. Route structured JSON payloads directly to your Discord channels, Slack instances, or custom endpoints the moment an anomaly or expiry threshold is detected.
+                  TLDsync isn&apos;t just a dashboard. It&apos;s a proactive intelligence engine. Route structured JSON payloads directly to your Discord channels, Slack instances, or custom endpoints the moment an anomaly or expiry threshold is detected.
                 </p>
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-4">
@@ -272,7 +272,7 @@ export default function LandingPage() {
                     </div>
                     <div>
                       <h4 className="font-semibold text-slate-900 dark:text-white">Privacy First</h4>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">We don't sell your domain data. Period. Independent tracking for independent hackers.</p>
+                      <p className="text-sm text-slate-600 dark:text-slate-400">We don&apos;t sell your domain data. Period. Independent tracking for independent hackers.</p>
                     </div>
                   </div>
                 </div>
