@@ -41,7 +41,7 @@ import type {
   EmailChannelConfig,
 } from "@/lib/types/settings";
 import { NOTIFICATION_EVENTS } from "@/lib/types/settings";
-import { updateUserSettings, testDiscordWebhook } from "@/app/actions/settings";
+import { updateUserSettings, testDiscordWebhook, testEmailNotification } from "@/app/actions/settings";
 import { updateProfileName } from "@/app/actions/profile";
 
 // ─── Sidebar Navigation Items ───────────────────────────────
@@ -132,6 +132,10 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
   const [errorMessage, setErrorMessage] = useState("");
   const [testError, setTestError] = useState("");
 
+  const [emailTesting, setEmailTesting] = useState(false);
+  const [emailTestStatus, setEmailTestStatus] = useState<"idle" | "success" | "error">("idle");
+  const [emailTestError, setEmailTestError] = useState("");
+
   // ─── Event Toggles ─────────────────────────────────────────
 
   const toggleEmailEvent = useCallback((event: NotificationEvent) => {
@@ -177,6 +181,24 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
     }
     setSaving(false);
     if (!result.error) setTimeout(() => setSaveStatus("idle"), 3000);
+  };
+
+  // ─── Test Email ────────────────────────────────────────────
+
+  const handleTestEmail = async () => {
+    setEmailTesting(true);
+    setEmailTestStatus("idle");
+    setEmailTestError("");
+
+    const result = await testEmailNotification();
+    if (result.error) {
+      setEmailTestStatus("error");
+      setEmailTestError(result.error);
+    } else {
+      setEmailTestStatus("success");
+    }
+    setEmailTesting(false);
+    if (!result.error) setTimeout(() => setEmailTestStatus("idle"), 4000);
   };
 
   // ─── Test Discord ──────────────────────────────────────────
@@ -425,6 +447,36 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
                         />
                       ))}
                     </div>
+
+                    <Separator className="my-5" />
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-slate-500">
+                        Send a test email to <span className="font-semibold text-slate-700">{userProfile.email}</span>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleTestEmail}
+                        disabled={emailTesting}
+                        className="shrink-0 h-9"
+                      >
+                        {emailTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5 mr-2" />}
+                        Test Email
+                      </Button>
+                    </div>
+                    {emailTestStatus === "success" && (
+                      <div className="mt-2 flex items-center justify-end gap-1.5 text-xs text-emerald-600">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        Test email sent! Check your inbox.
+                      </div>
+                    )}
+                    {emailTestStatus === "error" && (
+                      <div className="mt-2 flex items-center justify-end gap-1.5 text-xs text-rose-600">
+                        <XCircle className="w-3.5 h-3.5" />
+                        {emailTestError || "Failed to send test email"}
+                      </div>
+                    )}
                   </CardContent>
                 )}
               </Card>

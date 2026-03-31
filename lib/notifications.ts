@@ -198,3 +198,35 @@ async function sendEmailAlert(
     console.error(`Failed to send email alert for ${domainName}:`, err);
   }
 }
+
+// ─── Test Email ─────────────────────────────────────────────
+
+export async function sendTestEmail(to: string) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+    throw new Error("SMTP credentials missing. Email notification skipped.");
+  }
+
+  const subject = "TLDsync: Test Email Notification";
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background-color: #4f46e5; padding: 20px; text-align: center;">
+        <h2 style="color: white; margin: 0;">Test Successful</h2>
+      </div>
+      <div style="padding: 20px;">
+        <p>Hello,</p>
+        <p>This is a test email from <strong>TLDsync</strong> to confirm your email notification delivery is working correctly.</p>
+        <p>If you received this message, your alert routing is fully operational.</p>
+        <p style="color: #64748b; font-size: 12px; margin-top: 30px;">
+          You can safely ignore this message.
+        </p>
+      </div>
+    </div>
+  `;
+
+  await transporter.sendMail({
+    from: `"TLDsync" <${SMTP_FROM}>`,
+    to,
+    subject,
+    html,
+  });
+}

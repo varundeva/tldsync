@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { NotificationChannels } from "@/lib/types/settings";
 import { sendDiscordTestMessage } from "@/lib/discord";
+import { sendTestEmail } from "@/lib/notifications";
 
 // ─── Helper ──────────────────────────────────────────────────
 
@@ -132,5 +133,20 @@ export async function testDiscordWebhook(webhookUrl: string) {
   } catch (error: any) {
     console.error("Discord test failed:", error);
     return { error: error.message || "Failed to send test message" };
+  }
+}
+
+// ─── Test Email Webhook ─────────────────────────────────────
+
+export async function testEmailNotification() {
+  const user = await getAuthenticatedUser();
+  if (!user || !user.email) return { error: "Unauthorized or email missing" };
+
+  try {
+    await sendTestEmail(user.email);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Email test failed:", error);
+    return { error: error.message || "Failed to send test email. Check SMTP settings." };
   }
 }
