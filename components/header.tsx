@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Globe, Github, Settings } from "lucide-react";
+import { ThemeToggle } from "./theme-toggle";
 
 export function Header({
   email,
@@ -12,7 +13,7 @@ export function Header({
     <header className="bg-white border-b border-slate-200 sticky top-0 z-10 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         <Link
-          href="/dashboard"
+          href="/"
           className="flex items-center gap-2 text-indigo-600 font-semibold text-lg hover:text-indigo-700 transition-colors"
         >
           <Globe className="w-6 h-6" />
@@ -38,6 +39,7 @@ export function Header({
           <span className="text-sm font-medium text-slate-600 hidden sm:inline-block">
             {email}
           </span>
+          <ThemeToggle />
           {logoutButton}
         </div>
       </div>
