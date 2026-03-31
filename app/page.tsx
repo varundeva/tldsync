@@ -1,7 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import {
-  Globe,
   ShieldCheck,
   Bell,
   Zap,
@@ -10,7 +9,9 @@ import {
   Clock,
   Server,
   Mail,
+  Globe,
 } from "lucide-react";
+import { LandingNav } from "@/components/landing-nav";
 
 export const metadata: Metadata = {
   title: "TLDsync — Domain Expiry Tracking & Monitoring",
@@ -61,28 +62,7 @@ export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-slate-900 flex flex-col">
       {/* ── Nav ────────────────────────────────────────────── */}
-      <header className="border-b border-slate-100 sticky top-0 bg-white/90 backdrop-blur z-50">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2 font-bold text-lg">
-            <Globe className="w-5 h-5 text-indigo-600" />
-            <span>TLDsync</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="text-sm text-slate-600 hover:text-slate-900 transition-colors font-medium px-3 py-1.5 rounded-lg hover:bg-slate-50"
-            >
-              Log in
-            </Link>
-            <Link
-              href="/login"
-              className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-1.5 rounded-lg transition-colors"
-            >
-              Get started free
-            </Link>
-          </div>
-        </div>
-      </header>
+      <LandingNav />
 
       {/* ── Hero ───────────────────────────────────────────── */}
       <main className="flex-1">
