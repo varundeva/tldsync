@@ -18,7 +18,7 @@ export function useAuth() {
   const logout = useCallback(async () => {
     await authClient.signOut();
     clearSession();
-    router.push("/login");
+    router.push("/auth");
   }, [router, clearSession]);
 
   return { user, isAuthenticated, isLoading, logout };

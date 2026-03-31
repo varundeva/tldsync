@@ -10,7 +10,7 @@ export default function LogoutButton() {
   
   const handleLogout = async () => {
     await authClient.signOut();
-    router.push("/login");
+    router.push("/auth");
   };
 
   return (

@@ -20,7 +20,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   });
 
   if (!session) {
-    redirect("/login");
+    redirect("/auth");
   }
 
   return (
