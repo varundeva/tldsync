@@ -7,9 +7,8 @@ import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
-import dns from "dns/promises";
 import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup/index";
-
+import { fetchDohRaw } from "@/lib/domain-lookup/doh-dns";
 // ─── Schemas ─────────────────────────────────────────────────
 
 const addDomainSchema = z.object({
@@ -121,31 +120,25 @@ export async function verifyDomain(domainId: string) {
   }
 
   try {
-    // Check TXT records for the verification token
-    let txtRecords: string[][] = [];
+    // Check TXT records for the verification token using DoH
+    let txtRecords: any[] = [];
     try {
-      txtRecords = await Promise.race([
-        dns.resolveTxt(domain.domainName),
-        new Promise<string[][]>((_, reject) =>
-          setTimeout(() => reject(new Error("DNS Timeout")), 4000)
-        ),
-      ]);
+      txtRecords = await fetchDohRaw(domain.domainName, "TXT", { timeout: 4000 });
     } catch {
       return {
         error:
-          "Could not resolve TXT records for this domain. Please ensure the TXT record has been added and DNS has propagated.",
+          "Could not resolve TXT records for this domain via DoH. Please ensure the TXT record has been added and DNS has propagated.",
       };
     }
 
-    const flatRecords = txtRecords.map((r) => r.join(""));
-    const found = flatRecords.some(
-      (record) => record.trim() === domain.verificationToken
+    const found = txtRecords.some(
+      (record) => record.text.trim() === domain.verificationToken
     );
 
     if (!found) {
       return {
         error: `Verification TXT record not found. Please add a TXT record with the value: ${domain.verificationToken}`,
-        txtRecordsFound: flatRecords,
+        txtRecordsFound: txtRecords.map(r => r.text),
       };
     }
 

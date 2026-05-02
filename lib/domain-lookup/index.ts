@@ -1,4 +1,4 @@
-import { fetchRootDns } from "./dns";
+import { fetchRootDns, fetchEmailSecurityRecords } from "./dns";
 import { discoverSubdomains } from "./subdomain";
 import { fetchSslInfo } from "./ssl";
 import { fetchHttpInfo } from "./http";
@@ -15,12 +15,13 @@ export * from "./http";
 export async function fetchComprehensiveDomainData(
     domain: string
 ): Promise<ComprehensiveDomainData> {
-    const [root, subdomains, ssl, http] = await Promise.all([
+    const [root, subdomains, ssl, http, emailSecurity] = await Promise.all([
         fetchRootDns(domain),
         discoverSubdomains(domain),
         fetchSslInfo(domain),
         fetchHttpInfo(domain),
+        fetchEmailSecurityRecords(domain),
     ]);
 
-    return { root, subdomains, ssl, http };
+    return { root, subdomains, ssl, http, emailSecurity };
 }

@@ -1,5 +1,5 @@
-import dns from "dns/promises";
-import { SubdomainRecord } from "./types";
+import { SubdomainRecord, ARecord, AAAARecord, CnameRecord } from "./types";
+import { fetchDohRaw } from "./doh-dns";
 
 const COMMON_SUBDOMAINS = [
     "www", "mail", "ftp", "api", "blog", "dev", "staging", "test", "admin", "app",
@@ -48,14 +48,14 @@ async function fetchCtSubdomains(domain: string): Promise<string[]> {
 
 async function probeDns(sub: string, fullDomain: string): Promise<SubdomainRecord | null> {
     const [a, aaaa, cname] = await Promise.allSettled([
-        dns.resolve4(fullDomain).catch(() => [] as string[]),
-        dns.resolve6(fullDomain).catch(() => [] as string[]),
-        dns.resolveCname(fullDomain).catch(() => [] as string[]),
+        fetchDohRaw(fullDomain, "A"),
+        fetchDohRaw(fullDomain, "AAAA"),
+        fetchDohRaw(fullDomain, "CNAME"),
     ]);
 
-    const aRecords = a.status === "fulfilled" ? a.value : [];
-    const aaaaRecords = aaaa.status === "fulfilled" ? aaaa.value : [];
-    const cnameRecords = cname.status === "fulfilled" ? cname.value : [];
+    const aRecords = a.status === "fulfilled" ? a.value.map(r => ({ address: r.data, ttl: r.ttl, provider: r.provider } as ARecord)) : [];
+    const aaaaRecords = aaaa.status === "fulfilled" ? aaaa.value.map(r => ({ address: r.data, ttl: r.ttl, provider: r.provider } as AAAARecord)) : [];
+    const cnameRecords = cname.status === "fulfilled" ? cname.value.map(r => ({ target: r.data, ttl: r.ttl, provider: r.provider } as CnameRecord)) : [];
 
     if (aRecords.length === 0 && aaaaRecords.length === 0 && cnameRecords.length === 0) {
         return null;

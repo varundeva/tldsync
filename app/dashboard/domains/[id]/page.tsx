@@ -228,15 +228,22 @@ export default async function DomainDetailsPage({
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {nameServers.map((ns: string, i: number) => (
-                    <Badge
-                      key={i}
-                      variant="outline"
-                      className="font-mono text-sm px-3 py-1"
-                    >
-                      <Globe className="w-3 h-3 mr-1.5 text-slate-400" />
-                      {ns}
-                    </Badge>
+                  {nameServers.map((record: any, i: number) => (
+                    <div key={i} className="flex flex-col gap-1">
+                      <Badge
+                        variant="outline"
+                        className="font-mono text-sm px-3 py-1"
+                      >
+                        <Globe className="w-3 h-3 mr-1.5 text-slate-400" />
+                        {record.nameserver}
+                      </Badge>
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                        <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                          {record.provider}
+                        </Badge>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </CardContent>

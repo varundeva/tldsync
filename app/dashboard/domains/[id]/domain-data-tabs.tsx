@@ -114,18 +114,31 @@ export default function DomainDataTabs({
             </Badge>
           )}
         </TabsTrigger>
-        <TabsTrigger value="ssl" disabled={!isVerified} className="flex items-center gap-1.5 text-xs">
+        <TabsTrigger
+          value="ssl"
+          disabled={!isVerified}
+          className="flex items-center gap-1.5 text-xs"
+        >
           <Lock className="w-3.5 h-3.5" />
           SSL
         </TabsTrigger>
-        <TabsTrigger value="http" disabled={!isVerified} className="flex items-center gap-1.5 text-xs">
+        <TabsTrigger
+          value="email"
+          disabled={!isVerified}
+          className="flex items-center gap-1.5 text-xs"
+        >
+          <Shield className="w-3.5 h-3.5" />
+          Email Security
+        </TabsTrigger>
+        <TabsTrigger
+          value="http"
+          disabled={!isVerified}
+          className="flex items-center gap-1.5 text-xs"
+        >
           <Globe className="w-3.5 h-3.5" />
           HTTP
         </TabsTrigger>
-        <TabsTrigger
-          value="whois"
-          className="flex items-center gap-1.5 text-xs"
-        >
+        <TabsTrigger value="whois" className="flex items-center gap-1.5 text-xs">
           <Info className="w-3.5 h-3.5" />
           WHOIS
         </TabsTrigger>
@@ -148,14 +161,14 @@ export default function DomainDataTabs({
                   <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                     Primary NS
                   </div>
-                  <div className="font-mono text-sm">{root.SOA.nsname}</div>
+                  <div className="font-mono text-sm">{root.SOA.mname}</div>
                 </div>
                 <div>
                   <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                     Admin Email
                   </div>
                   <div className="font-mono text-sm">
-                    {root.SOA.hostmaster.replace(".", "@")}
+                    {root.SOA.rname.replace(".", "@")}
                   </div>
                 </div>
                 <div>
@@ -169,7 +182,7 @@ export default function DomainDataTabs({
                     TTL
                   </div>
                   <div className="font-mono text-sm">
-                    {root.SOA.minttl}s
+                    {root.SOA.minimum}s
                   </div>
                 </div>
               </div>
@@ -185,14 +198,18 @@ export default function DomainDataTabs({
           <CardContent>
             {root?.A && root.A.length > 0 ? (
               <div className="flex flex-wrap gap-2">
-                {root.A.map((ip, i) => (
-                  <Badge
-                    key={i}
-                    variant="outline"
-                    className="font-mono text-sm px-3 py-1"
-                  >
-                    {ip}
-                  </Badge>
+                {root.A.map((record, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Badge variant="outline" className="font-mono text-sm px-3 py-1">
+                      {record.address}
+                    </Badge>
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                        {record.provider}
+                      </Badge>
+                    </div>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -209,14 +226,18 @@ export default function DomainDataTabs({
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {root.AAAA.map((ip, i) => (
-                  <Badge
-                    key={i}
-                    variant="outline"
-                    className="font-mono text-sm px-3 py-1"
-                  >
-                    {ip}
-                  </Badge>
+                {root.AAAA.map((record, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Badge variant="outline" className="font-mono text-sm px-3 py-1">
+                      {record.address}
+                    </Badge>
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                        {record.provider}
+                      </Badge>
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -236,23 +257,31 @@ export default function DomainDataTabs({
                   <TableRow>
                     <TableHead>Priority</TableHead>
                     <TableHead>Mail Server</TableHead>
+                    <TableHead>TTL</TableHead>
+                    <TableHead>Provider</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {root.MX.sort((a, b) => a.priority - b.priority).map(
-                    (mx, i) => (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Badge variant="outline" className="font-mono">
-                            {mx.priority}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {mx.exchange}
-                        </TableCell>
-                      </TableRow>
-                    )
-                  )}
+                  {root.MX.sort((a, b) => a.priority - b.priority).map((mx, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono">
+                          {mx.priority}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {mx.exchange}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {mx.ttl}s
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {mx.provider}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             ) : (
@@ -269,14 +298,18 @@ export default function DomainDataTabs({
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {root.CNAME.map((cname, i) => (
-                  <Badge
-                    key={i}
-                    variant="outline"
-                    className="font-mono text-sm px-3 py-1"
-                  >
-                    {cname}
-                  </Badge>
+                {root.CNAME.map((record, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Badge variant="outline" className="font-mono text-sm px-3 py-1">
+                      {record.target}
+                    </Badge>
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                        {record.provider}
+                      </Badge>
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -294,25 +327,33 @@ export default function DomainDataTabs({
           <CardContent>
             {root?.TXT && root.TXT.length > 0 ? (
               <div className="space-y-2">
-                {root.TXT.map((txt, i) => {
-                  const value = Array.isArray(txt) ? txt.join("") : txt;
+                {root.TXT.map((record, i) => {
+                  const value = record.text;
                   const type = value.startsWith("v=spf")
                     ? "SPF"
-                    : value.startsWith("v=DKIM")
-                      ? "DKIM"
-                      : value.startsWith("v=DMARC")
-                        ? "DMARC"
-                        : value.includes("verify")
-                          ? "Verification"
-                          : "TXT";
+                    : value.includes("dkim") || value.startsWith("v=DKIM")
+                    ? "DKIM"
+                    : value.startsWith("v=DMARC")
+                    ? "DMARC"
+                    : value.includes("verify")
+                    ? "Verification"
+                    : "TXT";
                   return (
                     <div
                       key={i}
                       className="bg-slate-50 rounded-lg p-3 border border-slate-100"
                     >
-                      <Badge className="mb-2 text-[10px]" variant="outline">
-                        {type}
-                      </Badge>
+                      <div className="flex items-center justify-between mb-2">
+                        <Badge className="text-[10px]" variant="outline">
+                          {type}
+                        </Badge>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                          <Badge variant="secondary" className="text-[10px] opacity-70">
+                            {record.provider}
+                          </Badge>
+                        </div>
+                      </div>
                       <div className="font-mono text-xs break-all text-slate-700">
                         {value}
                       </div>
@@ -334,16 +375,20 @@ export default function DomainDataTabs({
               <CardDescription>Authoritative name servers.</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {root.NS.map((ns, i) => (
-                  <Badge
-                    key={i}
-                    variant="outline"
-                    className="font-mono text-sm px-3 py-1"
-                  >
-                    <Server className="w-3 h-3 mr-1.5 text-slate-400" />
-                    {ns}
-                  </Badge>
+              <div className="flex flex-wrap gap-4">
+                {root.NS.map((record, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Badge variant="outline" className="font-mono text-sm px-3 py-1">
+                      <Server className="w-3 h-3 mr-1.5 text-slate-400" />
+                      {record.nameserver}
+                    </Badge>
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                        {record.provider}
+                      </Badge>
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>
@@ -361,29 +406,33 @@ export default function DomainDataTabs({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Tag</TableHead>
+                     <TableHead>Tag</TableHead>
                     <TableHead>Value</TableHead>
+                    <TableHead>TTL</TableHead>
+                    <TableHead>Provider</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {root.CAA.map((caa, i) => {
-                    const isIodef = !!caa.iodef;
-                    const isIssueWild = !!caa.issuewild;
-                    const tag = isIodef ? "iodef" : isIssueWild ? "issuewild" : "issue";
-                    const value = caa.iodef || caa.issuewild || caa.issue || "unknown";
-                    return (
-                      <TableRow key={i}>
-                        <TableCell>
-                          <Badge variant="outline" className="font-mono text-xs">
-                            {tag}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="font-mono text-sm">
-                          {value}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {root.CAA.map((caa, i) => (
+                    <TableRow key={i}>
+                      <TableCell>
+                        <Badge variant="outline" className="font-mono text-xs">
+                          {caa.tag}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="font-mono text-sm">
+                        {caa.value}
+                      </TableCell>
+                      <TableCell className="text-xs text-slate-500">
+                        {caa.ttl}s
+                      </TableCell>
+                      <TableCell>
+                         <Badge variant="secondary" className="text-[10px]">
+                          {caa.provider}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </CardContent>
@@ -401,19 +450,26 @@ export default function DomainDataTabs({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Service Target</TableHead>
+                    <TableHead>Target</TableHead>
                     <TableHead>Port</TableHead>
                     <TableHead>Priority</TableHead>
                     <TableHead>Weight</TableHead>
+                    <TableHead>TTL/Prov</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {root.SRV.map((srv, i) => (
                     <TableRow key={i}>
-                      <TableCell className="font-mono text-sm">{srv.name}</TableCell>
+                      <TableCell className="font-mono text-sm">{srv.target}</TableCell>
                       <TableCell className="font-mono text-sm">{srv.port}</TableCell>
                       <TableCell><Badge variant="outline" className="font-mono">{srv.priority}</Badge></TableCell>
                       <TableCell><Badge variant="outline" className="font-mono">{srv.weight}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col gap-1 items-start">
+                           <span className="text-[10px] text-slate-500">{srv.ttl}s</span>
+                           <Badge variant="secondary" className="text-[8px] scale-90 origin-left opacity-70">{srv.provider}</Badge>
+                        </div>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -467,18 +523,131 @@ export default function DomainDataTabs({
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {root.PTR.map((ptr, i) => (
-                  <Badge
-                    key={i}
-                    variant="outline"
-                    className="font-mono text-sm px-3 py-1"
-                  >
-                    {ptr}
-                  </Badge>
+                {root.PTR.map((record, i) => (
+                  <div key={i} className="flex flex-col gap-1">
+                    <Badge variant="outline" className="font-mono text-sm px-3 py-1">
+                      {record.target}
+                    </Badge>
+                     <div className="flex items-center justify-between px-1">
+                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                        {record.provider}
+                      </Badge>
+                    </div>
+                  </div>
                 ))}
               </div>
             </CardContent>
           </Card>
+        )}
+      </TabsContent>
+
+      {/* ─── Email Security Tab ───────────────────────────── */}
+      <TabsContent value="email" className="space-y-4">
+        {data?.emailSecurity ? (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* SPF */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    SPF (Sender Policy Framework)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {data.emailSecurity.spf.length > 0 ? (
+                    <div className="space-y-2">
+                      {data.emailSecurity.spf.map((r, i) => (
+                        <div key={i} className="font-mono text-xs p-3 bg-slate-50 border rounded-lg break-all">
+                          {r.text}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-500">No SPF records found. This domain might be insecure for sending emails.</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* DMARC */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                    DMARC
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {data.emailSecurity.dmarc.length > 0 ? (
+                    <div className="space-y-2">
+                      {data.emailSecurity.dmarc.map((r, i) => (
+                        <div key={i} className="font-mono text-xs p-3 bg-slate-50 border rounded-lg break-all">
+                          {r.text}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-red-500">No DMARC records found. High risk of email spoofing.</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* DKIM */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">DKIM (DomainKeys Identified Mail)</CardTitle>
+                <CardDescription>Discovered selectors and their public keys.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {data.emailSecurity.dkim.length > 0 ? (
+                  <div className="space-y-4">
+                    {data.emailSecurity.dkim.map((d, i) => (
+                      <div key={i} className="space-y-2">
+                        <Badge variant="outline" className="font-mono">selector: {d.selector}</Badge>
+                        <div className="font-mono text-[10px] p-3 bg-slate-50 border rounded-lg break-all text-slate-600">
+                          {d.records.map(r => r.text).join("\n")}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                   <p className="text-sm text-slate-500">No common DKIM selectors found via brute-force probe.</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Others (BIMI, MTA-STS, TLS-RPT) */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+               <Card>
+                 <CardHeader><CardTitle className="text-sm">BIMI</CardTitle></CardHeader>
+                 <CardContent>
+                   {data.emailSecurity.bimi.length > 0 ? (
+                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Configured</Badge>
+                   ) : <span className="text-xs text-slate-400">Not found</span>}
+                 </CardContent>
+               </Card>
+               <Card>
+                 <CardHeader><CardTitle className="text-sm">MTA-STS</CardTitle></CardHeader>
+                 <CardContent>
+                   {data.emailSecurity.mtaSts.length > 0 ? (
+                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Enabled</Badge>
+                   ) : <span className="text-xs text-slate-400">Not found</span>}
+                 </CardContent>
+               </Card>
+               <Card>
+                 <CardHeader><CardTitle className="text-sm">TLS-RPT</CardTitle></CardHeader>
+                 <CardContent>
+                   {data.emailSecurity.tlsRpt.length > 0 ? (
+                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Enabled</Badge>
+                   ) : <span className="text-xs text-slate-400">Not found</span>}
+                 </CardContent>
+               </Card>
+            </div>
+          </>
+        ) : (
+          <p className="text-slate-500 text-sm">No email security data available.</p>
         )}
       </TabsContent>
 
@@ -511,14 +680,14 @@ export default function DomainDataTabs({
                       type: string;
                       value: string;
                     }[] = [];
-                    sub.A.forEach((ip) =>
-                      rows.push({ type: "A", value: ip })
+                    sub.A.forEach((r) =>
+                      rows.push({ type: "A", value: r.address })
                     );
-                    sub.AAAA.forEach((ip) =>
-                      rows.push({ type: "AAAA", value: ip })
+                    sub.AAAA.forEach((r) =>
+                      rows.push({ type: "AAAA", value: r.address })
                     );
-                    sub.CNAME.forEach((cn) =>
-                      rows.push({ type: "CNAME", value: cn })
+                    sub.CNAME.forEach((r) =>
+                      rows.push({ type: "CNAME", value: r.target })
                     );
 
                     return rows.map((row, i) => (
