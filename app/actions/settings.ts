@@ -38,7 +38,7 @@ export async function getUserSettings() {
 
 // ─── Upsert Settings (create or update) ─────────────────────
 
-const notificationEventSchema = z.enum(["domain_expiry", "ssl_expiry", "sync_report", "dns_change"]);
+const notificationEventSchema = z.enum(["domain_expiry", "ssl_expiry", "sync_report", "dns_change", "whois_change"]);
 
 const discordChannelSchema = z.object({
   webhookUrl: z.string().url("Must be a valid URL").refine(

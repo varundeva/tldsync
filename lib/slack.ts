@@ -75,6 +75,23 @@ export async function sendSlackDnsChangeAlert(
   ]);
 }
 
+export async function sendSlackWhoisChangeAlert(
+  webhookUrl: string,
+  domainName: string,
+  changeType: string
+) {
+  await sendSlackWebhook(webhookUrl, [
+    {
+      type: "header",
+      text: { type: "plain_text", text: "📝 WHOIS Change Detected", emoji: true }
+    },
+    {
+      type: "section",
+      text: { type: "mrkdwn", text: `A WHOIS information change was detected for *${domainName}*.\n\n*Change:* ${changeType.toUpperCase()}` }
+    }
+  ]);
+}
+
 export async function sendSlackTestMessage(webhookUrl: string) {
   await sendSlackWebhook(webhookUrl, [
     {

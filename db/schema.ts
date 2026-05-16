@@ -161,6 +161,29 @@ export const dnsChangeLog = pgTable("dns_change_log", {
 ]);
 // Never update rows. INSERT only.
 
+// ─── 4.5 whois_change_log — Append-only WHOIS change history ─
+
+export const whoisChangeLog = pgTable("whois_change_log", {
+  id: text("id").primaryKey(),
+  domainId: text("domainId")
+    .notNull()
+    .references(() => domains.id, { onDelete: "cascade" }),
+
+  changeType: text("changeType").notNull(),
+  // "created", "modified", "deleted"
+
+  oldData: jsonb("oldData"), 
+  newData: jsonb("newData"), 
+
+  detectedAt: timestamp("detectedAt").notNull(),
+
+  alertSent: boolean("alertSent").notNull().default(false),
+  acknowledged: boolean("acknowledged").notNull().default(false),
+}, (t) => [
+  index("whois_change_log_domainId_idx").on(t.domainId),
+  index("whois_change_log_detectedAt_idx").on(t.detectedAt),
+]);
+
 // ─── 5. domain_ssl — SSL snapshot (upsert on sync) ──────────
 
 export const domainSsl = pgTable("domain_ssl", {

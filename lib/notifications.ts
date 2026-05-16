@@ -1,12 +1,12 @@
 import nodemailer from "nodemailer";
 import { differenceInDays } from "date-fns";
 import { db } from "@/db";
-import { userSettings, dnsChangeLog } from "@/db/schema";
+import { userSettings, dnsChangeLog, whoisChangeLog } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { NotificationChannels } from "@/lib/types/settings";
-import { sendDiscordExpiryAlert } from "@/lib/discord";
-import { sendSlackExpiryAlert, sendSlackSyncReport, sendSlackDnsChangeAlert } from "@/lib/slack";
-import { sendTelegramExpiryAlert, sendTelegramSyncReport, sendTelegramDnsChangeAlert } from "@/lib/telegram";
+import { sendDiscordExpiryAlert, sendDiscordWhoisChangeAlert } from "@/lib/discord";
+import { sendSlackExpiryAlert, sendSlackSyncReport, sendSlackDnsChangeAlert, sendSlackWhoisChangeAlert } from "@/lib/slack";
+import { sendTelegramExpiryAlert, sendTelegramSyncReport, sendTelegramDnsChangeAlert, sendTelegramWhoisChangeAlert } from "@/lib/telegram";
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587");
@@ -235,6 +235,57 @@ export async function processAlerts(
         .set({ alertSent: true })
         .where(eq(dnsChangeLog.id, change.id));
     }
+
+    // 4. Check whois_change_log for unalerted changes
+    const unalertedWhois = await db
+      .select()
+      .from(whoisChangeLog)
+      .where(
+        and(
+          eq(whoisChangeLog.domainId, domainId),
+          eq(whoisChangeLog.alertSent, false)
+        )
+      );
+
+    for (const change of unalertedWhois) {
+      if (channels.email?.enabled !== false && (channels.email?.events?.includes("whois_change") ?? false)) {
+        await sendWhoisChangeEmailAlert(userEmail, domainName, change.changeType);
+      }
+      if (channels.discord?.enabled && channels.discord.webhookUrl && channels.discord.events?.includes("whois_change")) {
+        try { await sendDiscordWhoisChangeAlert(channels.discord.webhookUrl, domainName, change.changeType); } catch (err) {}
+      }
+      if (channels.slack?.enabled && channels.slack.webhookUrl && channels.slack.events?.includes("whois_change")) {
+        try { await sendSlackWhoisChangeAlert(channels.slack.webhookUrl, domainName, change.changeType); } catch (err) {}
+      }
+      if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId && channels.telegram.events?.includes("whois_change")) {
+        try { await sendTelegramWhoisChangeAlert(channels.telegram.botToken, channels.telegram.chatId, domainName, change.changeType); } catch (err) {}
+      }
+      await db.update(whoisChangeLog).set({ alertSent: true }).where(eq(whoisChangeLog.id, change.id));
+    }
+  }
+}
+
+// ─── WHOIS Change Email Alert ───────────────────────────────
+
+async function sendWhoisChangeEmailAlert(to: string, domainName: string, changeType: string) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) return;
+  const subject = `WHOIS Change Detected: ${domainName}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background-color: #f59e0b; padding: 20px; text-align: center;">
+        <h2 style="color: white; margin: 0;">WHOIS Change Detected</h2>
+      </div>
+      <div style="padding: 20px;">
+        <p>A change in WHOIS information was detected for <strong>${domainName}</strong>.</p>
+        <p>Change Type: <strong>${changeType.toUpperCase()}</strong></p>
+        <p>Please log in to TLDsync to review the updated WHOIS details.</p>
+      </div>
+    </div>
+  `;
+  try {
+    await transporter.sendMail({ from: `"TLDsync Alerts" <${SMTP_FROM}>`, to, subject, html });
+  } catch (err) {
+    console.error(`Failed to send WHOIS change email for ${domainName}:`, err);
   }
 }
 

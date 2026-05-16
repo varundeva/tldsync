@@ -64,6 +64,34 @@ export async function sendDiscordExpiryAlert(
   ]);
 }
 
+// ─── WHOIS Change Alert ─────────────────────────────────────
+
+export async function sendDiscordWhoisChangeAlert(
+  webhookUrl: string,
+  domainName: string,
+  changeType: string
+) {
+  const colorMap: Record<string, number> = {
+    created: 0x22c55e, // green
+    modified: 0xf59e0b, // amber
+    deleted: 0xef4444, // red
+  };
+  const color = colorMap[changeType] ?? 0x6366f1;
+
+  await sendDiscordWebhook(webhookUrl, [
+    {
+      title: `📝 WHOIS Change: ${domainName}`,
+      description: `A change in WHOIS information was detected for **${domainName}**.`,
+      color,
+      fields: [
+        { name: "Change", value: changeType.charAt(0).toUpperCase() + changeType.slice(1), inline: true },
+      ],
+      footer: { text: "TLDsync WHOIS Monitor" },
+      timestamp: new Date().toISOString(),
+    },
+  ]);
+}
+
 // ─── Sync Report ────────────────────────────────────────────
 
 export interface SyncReportDomain {

@@ -11,6 +11,7 @@ import {
   domainRdap,
   domainEmailSecurity,
   domainSubdomains,
+  whoisChangeLog,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { fetchWhoisInfo, fetchComprehensiveDomainData } from "@/lib/domain-lookup/index";
@@ -66,10 +67,9 @@ export async function syncDomainData(
 
     if (existing && existing.dataHash !== newHash) {
       // WHOIS changed — log it
-      await db.insert(dnsChangeLog).values({
+      await db.insert(whoisChangeLog).values({
         id: crypto.randomUUID(),
         domainId,
-        recordType: "WHOIS",
         changeType: "modified",
         oldData: { registrar: existing.registrar, expirationDate: existing.expirationDate },
         newData: { registrar, expirationDate },

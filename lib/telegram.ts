@@ -58,6 +58,16 @@ export async function sendTelegramDnsChangeAlert(
   await sendTelegramMessage(botToken, chatId, text);
 }
 
+export async function sendTelegramWhoisChangeAlert(
+  botToken: string,
+  chatId: string,
+  domainName: string,
+  changeType: string
+) {
+  const text = `📝 *WHOIS Change Detected*\n\nA WHOIS information change was detected for *${domainName}*.\n\n*Change:* ${changeType.toUpperCase()}`;
+  await sendTelegramMessage(botToken, chatId, text);
+}
+
 export async function sendTelegramTestMessage(botToken: string, chatId: string) {
   const text = `✅ *TLDsync Connected!*\n\nYour Telegram bot is correctly configured. You will receive domain alerts and sync reports in this chat.`;
   await sendTelegramMessage(botToken, chatId, text);
