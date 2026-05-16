@@ -6,6 +6,8 @@ import { syncDomainData } from "@/lib/domain-sync";
 import { processAlerts } from "@/lib/notifications";
 import type { NotificationChannels } from "@/lib/types/settings";
 import { sendDiscordSyncReport, type SyncReportDomain } from "@/lib/discord";
+import { sendSlackSyncReport } from "@/lib/slack";
+import { sendTelegramSyncReport } from "@/lib/telegram";
 
 export const maxDuration = 300;
 
@@ -107,6 +109,23 @@ export async function GET(request: Request) {
           channels.discord.events?.includes("sync_report")
         ) {
           await sendDiscordSyncReport(channels.discord.webhookUrl, userData.domains);
+        }
+
+        if (
+          channels.slack?.enabled &&
+          channels.slack.webhookUrl &&
+          channels.slack.events?.includes("sync_report")
+        ) {
+          await sendSlackSyncReport(channels.slack.webhookUrl, userData.domains);
+        }
+
+        if (
+          channels.telegram?.enabled &&
+          channels.telegram.botToken &&
+          channels.telegram.chatId &&
+          channels.telegram.events?.includes("sync_report")
+        ) {
+          await sendTelegramSyncReport(channels.telegram.botToken, channels.telegram.chatId, userData.domains);
         }
       } catch (err) {
         console.error(`Sync report failed for user ${userId}:`, err);

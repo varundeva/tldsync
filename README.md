@@ -11,7 +11,7 @@
 # 🌐 TLDSync
 
 **An open-source domain portfolio tracker and intelligence dashboard.**  
-Track ownership, expiration, DNS records, subdomains, SSL certificates, WHOIS/RDAP data — all in one place.
+Track ownership, expiration, DNS records, subdomains, SSL certificates, WHOIS/RDAP data, and get multi-channel alerts (Email, Slack, Discord, Telegram) — all in one place.
 
 [Features](#-features) · [Tech Stack](#-tech-stack) · [Getting Started](#-getting-started) · [Configuration](#-configuration) · [Project Structure](#-project-structure) · [Contributing](#-contributing)
 
@@ -27,32 +27,27 @@ Track ownership, expiration, DNS records, subdomains, SSL certificates, WHOIS/RD
 - Verification tokens are unique per domain, per user
 
 ### 📊 Comprehensive Domain Intelligence
-After verification, TLDSync automatically fetches and stores:
+After verification, TLDSync automatically fetches and stores data in a **fully normalized relational database**:
 
 | Data Type | Details |
 |-----------|---------|
 | **WHOIS / RDAP** | Registrar, registration date, expiry date — with 2-stage fallback (whois-parsed → RDAP via HTTPS) |
 | **DNS Records** | A, AAAA, MX, TXT, CNAME, NS, SOA, CAA, SRV, NAPTR, PTR |
-| **Subdomain Discovery** | Combined CT log scan (crt.sh) + DNS brute force (30+ common names) |
+| **Subdomain Discovery** | Combined CT log scan (crt.sh) + DoH-based DNS lookup / brute force (30+ common names) |
+| **Email Security** | SPF, DKIM, DMARC, BIMI, MTA-STS, TLS-RPT records tracked |
 | **SSL Certificate** | Issuer, validity dates, SANs, protocol (TLS version), fingerprint |
 | **HTTP Headers** | Status, server, security headers (HSTS, CSP, X-Frame-Options, etc.) |
-| **Name Servers** | Extracted from both RDAP and DNS |
 
-### 📅 Expiration Tracking
-- Dashboard overview showing **Verified**, **Pending**, and **Expiring Soon** domain counts
-- Per-domain expiry badge: 🟢 Safe / 🟡 Expiring in 90 days / 🔴 Expiring in 30 days / ⛔ Expired
-- Manual **Sync** button to re-fetch all data on demand
+### 🔔 Multi-Channel Alerting & Change Tracking
+- **Automated Alerts:** Get notified via **Email**, **Slack**, **Discord**, or **Telegram**.
+- **Tracked Events:** Domain Expiry, SSL Expiry, automated Sync Reports, and live **DNS Changes**.
+- **Change Log (Audit Trail):** Every DNS record change is hashed via MD5 and tracked in a `dns_change_log` table, preserving an immutable audit trail of what was modified, added, or deleted.
+- **Scheduled Syncs:** Automated background cron job keeps all domain data fresh and dispatches alerts seamlessly.
 
 ### 🔍 Subdomain Discovery (Two-Method Combined)
-1. **Certificate Transparency Logs** — queries [crt.sh](https://crt.sh) to find every subdomain that has ever had a public SSL certificate issued (passive, no auth, no brute force)
-2. **DNS Brute Force** — probes 30+ common subdomain names (www, api, mail, staging, etc.) via live DNS resolution
-3. Results are **merged and deduplicated**, with a `source` tag: `ct` | `dns` | `ct+dns`
-
-### 🔒 WHOIS & RDAP Lookup Chain
-```
-1. whois-parsed (npm)  →  Primary: fast parsed lookups
-2. RDAP (HTTPS/JSON)   →  Fallback: ICANN-mandated standard, structured, never firewalled
-```
+1. **Certificate Transparency Logs** — queries [crt.sh](https://crt.sh) to find every subdomain that has ever had a public SSL certificate issued.
+2. **DNS Brute Force** — probes common subdomain names via live DNS resolution.
+3. Results are **merged and deduplicated**, with a `source` tag.
 
 ---
 
@@ -65,13 +60,8 @@ After verification, TLDSync automatically fetches and stores:
 | **Database** | PostgreSQL via [Drizzle ORM](https://orm.drizzle.team) |
 | **Auth** | [better-auth](https://better-auth.com) (Email + Password) |
 | **UI** | [shadcn/ui](https://ui.shadcn.com) + Tailwind CSS v4 |
-| **Animations** | [Motion](https://motion.dev) |
-| **Forms** | React Hook Form + Zod |
-| **DNS** | Node.js `dns/promises` (built-in) |
-| **SSL probing** | Node.js `tls` (built-in) |
-| **WHOIS** | [whois-parsed](https://www.npmjs.com/package/whois-parsed) |
-| **RDAP** | Custom client (`lib/rdap.ts`) via IANA bootstrap |
-| **CT Logs** | [crt.sh](https://crt.sh) public API |
+| **Notifications**| Nodemailer, Discord Webhooks, Slack Webhooks, Telegram Bot API |
+| **DNS/SSL** | Node.js `dns/promises`, `tls` |
 
 ---
 
@@ -116,12 +106,14 @@ BETTER_AUTH_SECRET="generate-a-long-random-string-here"
 
 # Database (PostgreSQL)
 DATABASE_URL="postgresql://postgres:password@localhost:5432/tldsync"
-```
 
-> **Generate a secret:**
-> ```bash
-> openssl rand -hex 32
-> ```
+# SMTP (For Email Alerts)
+SMTP_HOST="smtp.example.com"
+SMTP_PORT=587
+SMTP_USER="alerts@example.com"
+SMTP_PASS="your-smtp-password"
+SMTP_FROM="alerts@example.com"
+```
 
 ### 4. Set up the database
 
@@ -156,110 +148,28 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 | `NEXT_PUBLIC_APP_URL` | ✅ | Same as `APP_URL`, exposed to the client |
 | `BETTER_AUTH_SECRET` | ✅ | Long random secret for session signing |
 | `DATABASE_URL` | ✅ | PostgreSQL connection string |
-| `GEMINI_API_KEY` | ⬜ | Optional — for AI-powered features |
+| `SMTP_HOST`, etc. | ⬜ | Required for email notifications |
 
-### Database Providers
-
-**Local PostgreSQL**
-```env
-DATABASE_URL="postgresql://postgres:password@localhost:5432/tldsync"
-```
-
-**[Neon](https://neon.tech)** (free serverless Postgres)
-```env
-DATABASE_URL="postgresql://user:pass@ep-xxx.us-east-1.aws.neon.tech/tldsync?sslmode=require"
-```
-
-**[Supabase](https://supabase.com)**
-```env
-# Session/Transaction pooler (recommended for serverless)
-DATABASE_URL="postgresql://postgres.xxx:pass@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
-```
+*(Slack, Discord, and Telegram integrations are configured directly via the user dashboard Settings UI!)*
 
 ---
 
-## 📁 Project Structure
+## 🗄️ Database Schema (Normalized)
+
+The database architecture has been normalized for scale and comprehensive change tracking:
 
 ```
-tldsync/
-├── app/
-│   ├── actions/
-│   │   └── domain.ts          # Server actions: add, verify, sync, delete domain
-│   ├── api/
-│   │   ├── auth/              # better-auth API route handler
-│   │   └── domains/[name]/    # Domain API route
-│   ├── dashboard/
-│   │   ├── domains/[id]/      # Domain detail page (DNS tabs, WHOIS, SSL, subdomains)
-│   │   ├── page.tsx           # Portfolio overview table
-│   │   ├── add-domain-dialog.tsx
-│   │   └── domain-actions.tsx
-│   ├── login/                 # Login page
-│   ├── register/              # Register page
-│   └── layout.tsx
-├── db/
-│   ├── schema.ts              # Drizzle schema (user, session, account, domains, ...)
-│   └── index.ts               # DB connection (postgres.js driver)
-├── lib/
-│   ├── domain-lookup.ts       # DNS, SSL, HTTP, subdomain discovery logic
-│   ├── rdap.ts                # RDAP client (IANA bootstrap + full parser)
-│   ├── auth.ts                # better-auth server config
-│   └── auth-client.ts         # better-auth client config
-├── components/
-│   └── ui/                    # shadcn/ui components
-├── drizzle/                   # Migration files (auto-generated)
-├── drizzle.config.ts
-└── .env.example
-```
-
----
-
-## 🔄 How Domain Verification Works
-
-```
-1. User adds domain → TLDSync generates a unique TXT verification token
-2. User adds TXT record to DNS:
-     Type:  TXT
-     Host:  @
-     Value: domain-tracker-verify=<token>
-3. User clicks "Verify" → TLDSync queries DNS for the TXT record
-4. On success → automatically fetches:
-     • WHOIS / RDAP data
-     • All DNS records
-     • SSL certificate
-     • HTTP headers
-     • Subdomains (CT logs + DNS brute force)
-5. All data is stored in PostgreSQL and displayed in the dashboard
-```
-
----
-
-## 🧰 Available Scripts
-
-| Script | Description |
-|--------|-------------|
-| `npm run dev` | Start development server with hot reload |
-| `npm run build` | Build for production |
-| `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
-| `npx drizzle-kit generate` | Generate new migration from schema changes |
-| `npx drizzle-kit migrate` | Apply pending migrations to the database |
-| `npx drizzle-kit push` | Push schema directly (no migration files) |
-| `npx drizzle-kit studio` | Open Drizzle Studio (visual DB browser) |
-
----
-
-## 🗄️ Database Schema
-
-```
-user            → id, name, email, emailVerified, image, createdAt, updatedAt
-session         → id, expiresAt, token, userId, ipAddress, userAgent, ...
-account         → id, accountId, providerId, userId, accessToken, ...
-verification    → id, identifier, value, expiresAt, ...
-domains         → id, userId, domainName,
-                  verificationToken, verificationStatus, verifiedAt,
-                  registrar, registrationDate, expirationDate,
-                  nameServers, whoisData, dnsRecords,
-                  lastSyncedAt, createdAt, updatedAt
+user                    → Auth user details
+session, account        → better-auth session management
+user_settings           → JSONB notification preferences (Email, Slack, Discord, Telegram)
+domains                 → Domain core data & verification state
+domain_whois            → WHOIS/RDAP parsed details
+domain_dns_records      → Individual DNS records (A, TXT, MX, etc.) with MD5 hashing
+domain_subdomains       → Discovered subdomains
+domain_ssl              → SSL certificate details
+domain_http             → HTTP server status and security headers
+domain_email_security   → SPF, DKIM, DMARC, BIMI, MTA-STS states
+dns_change_log          → Immutable audit trail tracking all DNS changes
 ```
 
 ---
@@ -275,7 +185,7 @@ Contributions are welcome! Here's how to get started:
    ```
 3. **Make** your changes and commit using [Conventional Commits](https://www.conventionalcommits.org):
    ```bash
-   git commit -m "feat: add email notification for expiring domains"
+   git commit -m "feat: add ms teams notification support"
    ```
 4. **Push** to your fork:
    ```bash
@@ -301,10 +211,12 @@ Please use [GitHub Issues](https://github.com/varundeva/tldsync/issues) and incl
 
 ## 🗺️ Roadmap
 
-- [ ] Email alerts for expiring domains (< 30 days)
-- [ ] Webhook notifications (Slack, Discord, custom URL)
+- [x] Fully normalized relational database schema
+- [x] Email alerts for expiring domains
+- [x] Webhook notifications (Slack, Discord, Telegram)
+- [x] Scheduled auto-sync (cron)
+- [x] DNS change log auditing
 - [ ] Domain portfolio export (CSV / JSON)
-- [ ] Scheduled auto-sync (cron)
 - [ ] Multi-user teams / shared portfolios
 - [ ] AI-powered domain health summary (Gemini)
 - [ ] Bulk domain import

@@ -22,15 +22,24 @@ export interface EmailChannelConfig {
   events: NotificationEvent[];
 }
 
-// Add future channels here:
-// export interface SlackChannelConfig { ... }
-// export interface TelegramChannelConfig { ... }
+export interface SlackChannelConfig {
+  webhookUrl: string;
+  enabled: boolean;
+  events: NotificationEvent[];
+}
+
+export interface TelegramChannelConfig {
+  botToken: string;
+  chatId: string;
+  enabled: boolean;
+  events: NotificationEvent[];
+}
 
 export interface NotificationChannels {
   email?: EmailChannelConfig;
   discord?: DiscordChannelConfig;
-  // slack?: SlackChannelConfig;
-  // telegram?: TelegramChannelConfig;
+  slack?: SlackChannelConfig;
+  telegram?: TelegramChannelConfig;
 }
 
 export interface UserSettingsData {

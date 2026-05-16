@@ -5,6 +5,8 @@ import { userSettings, dnsChangeLog } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import type { NotificationChannels } from "@/lib/types/settings";
 import { sendDiscordExpiryAlert } from "@/lib/discord";
+import { sendSlackExpiryAlert, sendSlackSyncReport, sendSlackDnsChangeAlert } from "@/lib/slack";
+import { sendTelegramExpiryAlert, sendTelegramSyncReport, sendTelegramDnsChangeAlert } from "@/lib/telegram";
 
 const SMTP_HOST = process.env.SMTP_HOST || "";
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || "587");
@@ -110,6 +112,18 @@ export async function processAlerts(
           console.error(`Discord alert failed for ${domainName}:`, err);
         }
       }
+
+      // Slack alert
+      if (channels.slack?.enabled && channels.slack.webhookUrl && channels.slack.events?.includes("domain_expiry")) {
+        try { await sendSlackExpiryAlert(channels.slack.webhookUrl, domainName, domainDaysLeft, "Domain Registration"); } 
+        catch (err) { console.error(`Slack alert failed for ${domainName}:`, err); }
+      }
+
+      // Telegram alert
+      if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId && channels.telegram.events?.includes("domain_expiry")) {
+        try { await sendTelegramExpiryAlert(channels.telegram.botToken, channels.telegram.chatId, domainName, domainDaysLeft, "Domain Registration"); } 
+        catch (err) { console.error(`Telegram alert failed for ${domainName}:`, err); }
+      }
     }
   }
 
@@ -143,6 +157,18 @@ export async function processAlerts(
         } catch (err) {
           console.error(`Discord SSL alert failed for ${domainName}:`, err);
         }
+      }
+
+      // Slack alert
+      if (channels.slack?.enabled && channels.slack.webhookUrl && channels.slack.events?.includes("ssl_expiry")) {
+        try { await sendSlackExpiryAlert(channels.slack.webhookUrl, domainName, sslDaysLeft, "SSL Certificate"); } 
+        catch (err) { console.error(`Slack SSL alert failed for ${domainName}:`, err); }
+      }
+
+      // Telegram alert
+      if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId && channels.telegram.events?.includes("ssl_expiry")) {
+        try { await sendTelegramExpiryAlert(channels.telegram.botToken, channels.telegram.chatId, domainName, sslDaysLeft, "SSL Certificate"); } 
+        catch (err) { console.error(`Telegram SSL alert failed for ${domainName}:`, err); }
       }
     }
   }
@@ -189,6 +215,18 @@ export async function processAlerts(
         } catch (err) {
           console.error(`Discord DNS change alert failed for ${domainName}:`, err);
         }
+      }
+
+      // Slack alert for DNS change
+      if (channels.slack?.enabled && channels.slack.webhookUrl && channels.slack.events?.includes("dns_change")) {
+        try { await sendSlackDnsChangeAlert(channels.slack.webhookUrl, domainName, change.recordType, change.changeType); } 
+        catch (err) { console.error(`Slack DNS change alert failed for ${domainName}:`, err); }
+      }
+
+      // Telegram alert for DNS change
+      if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId && channels.telegram.events?.includes("dns_change")) {
+        try { await sendTelegramDnsChangeAlert(channels.telegram.botToken, channels.telegram.chatId, domainName, change.recordType, change.changeType); } 
+        catch (err) { console.error(`Telegram DNS change alert failed for ${domainName}:`, err); }
       }
 
       // Mark as alerted

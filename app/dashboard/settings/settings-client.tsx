@@ -39,26 +39,28 @@ import type {
   NotificationEvent,
   DiscordChannelConfig,
   EmailChannelConfig,
+  SlackChannelConfig,
+  TelegramChannelConfig,
 } from "@/lib/types/settings";
 import { NOTIFICATION_EVENTS } from "@/lib/types/settings";
-import { updateUserSettings, testDiscordWebhook, testEmailNotification } from "@/app/actions/settings";
+import { updateUserSettings, testDiscordWebhook, testEmailNotification, testSlackWebhook, testTelegramBot } from "@/app/actions/settings";
 import { updateProfileName } from "@/app/actions/profile";
 
 // ─── Sidebar Navigation Items ───────────────────────────────
 
 const NAV_ITEMS = [
   {
-    id: "notifications",
-    label: "Notifications",
-    icon: Bell,
-    description: "Alerts & channels",
-    available: true,
-  },
-  {
     id: "profile",
     label: "Profile",
     icon: User,
     description: "Account details",
+    available: true,
+  },
+  {
+    id: "notifications",
+    label: "Notifications",
+    icon: Bell,
+    description: "Alerts & channels",
     available: true,
   },
   {
@@ -104,7 +106,7 @@ interface SettingsClientProps {
 }
 
 export default function SettingsClient({ initialData, userProfile }: SettingsClientProps) {
-  const [activeSection, setActiveSection] = useState<SectionId>("notifications");
+  const [activeSection, setActiveSection] = useState<SectionId>("profile");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
 
   // ─── Notification State ────────────────────────────────────
@@ -120,6 +122,21 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
   const [discordConfig, setDiscordConfig] = useState<DiscordChannelConfig>(
     initialData.channels.discord ?? {
       webhookUrl: "",
+      enabled: false,
+      events: ["domain_expiry", "ssl_expiry"],
+    }
+  );
+  const [slackConfig, setSlackConfig] = useState<SlackChannelConfig>(
+    initialData.channels.slack ?? {
+      webhookUrl: "",
+      enabled: false,
+      events: ["domain_expiry", "ssl_expiry"],
+    }
+  );
+  const [telegramConfig, setTelegramConfig] = useState<TelegramChannelConfig>(
+    initialData.channels.telegram ?? {
+      botToken: "",
+      chatId: "",
       enabled: false,
       events: ["domain_expiry", "ssl_expiry"],
     }
@@ -156,6 +173,24 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
     }));
   }, []);
 
+  const toggleSlackEvent = useCallback((event: NotificationEvent) => {
+    setSlackConfig((prev) => ({
+      ...prev,
+      events: prev.events.includes(event)
+        ? prev.events.filter((e) => e !== event)
+        : [...prev.events, event],
+    }));
+  }, []);
+
+  const toggleTelegramEvent = useCallback((event: NotificationEvent) => {
+    setTelegramConfig((prev) => ({
+      ...prev,
+      events: prev.events.includes(event)
+        ? prev.events.filter((e) => e !== event)
+        : [...prev.events, event],
+    }));
+  }, []);
+
   // ─── Save ──────────────────────────────────────────────────
 
   const handleSave = async () => {
@@ -166,6 +201,12 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
     const channels: NotificationChannels = { email: emailConfig };
     if (discordConfig.webhookUrl) {
       channels.discord = discordConfig;
+    }
+    if (slackConfig.webhookUrl) {
+      channels.slack = slackConfig;
+    }
+    if (telegramConfig.botToken && telegramConfig.chatId) {
+      channels.telegram = telegramConfig;
     }
 
     const result = await updateUserSettings({
@@ -218,6 +259,52 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
     }
     setTesting(false);
     if (!result.error) setTimeout(() => setTestStatus("idle"), 4000);
+  };
+
+  // ─── Test Slack ────────────────────────────────────────────
+
+  const [slackTesting, setSlackTesting] = useState(false);
+  const [slackTestStatus, setSlackTestStatus] = useState<"idle" | "success" | "error">("idle");
+  const [slackTestError, setSlackTestError] = useState("");
+
+  const handleTestSlack = async () => {
+    if (!slackConfig.webhookUrl) return;
+    setSlackTesting(true);
+    setSlackTestStatus("idle");
+    setSlackTestError("");
+
+    const result = await testSlackWebhook(slackConfig.webhookUrl);
+    if (result.error) {
+      setSlackTestStatus("error");
+      setSlackTestError(result.error);
+    } else {
+      setSlackTestStatus("success");
+    }
+    setSlackTesting(false);
+    if (!result.error) setTimeout(() => setSlackTestStatus("idle"), 4000);
+  };
+
+  // ─── Test Telegram ──────────────────────────────────────────
+
+  const [telegramTesting, setTelegramTesting] = useState(false);
+  const [telegramTestStatus, setTelegramTestStatus] = useState<"idle" | "success" | "error">("idle");
+  const [telegramTestError, setTelegramTestError] = useState("");
+
+  const handleTestTelegram = async () => {
+    if (!telegramConfig.botToken || !telegramConfig.chatId) return;
+    setTelegramTesting(true);
+    setTelegramTestStatus("idle");
+    setTelegramTestError("");
+
+    const result = await testTelegramBot(telegramConfig.botToken, telegramConfig.chatId);
+    if (result.error) {
+      setTelegramTestStatus("error");
+      setTelegramTestError(result.error);
+    } else {
+      setTelegramTestStatus("success");
+    }
+    setTelegramTesting(false);
+    if (!result.error) setTimeout(() => setTelegramTestStatus("idle"), 4000);
   };
 
   // ─── Render ────────────────────────────────────────────────
@@ -577,29 +664,218 @@ export default function SettingsClient({ initialData, userProfile }: SettingsCli
                 )}
               </Card>
 
-              {/* ── Coming Soon Channels ─────────────────────── */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { name: "Slack", desc: "Workspace notifications", color: "bg-emerald-50 text-emerald-500" },
-                  { name: "Telegram", desc: "Bot notifications", color: "bg-blue-50 text-blue-500" },
-                ].map((ch) => (
-                  <div
-                    key={ch.name}
-                    className="flex items-center gap-3 p-4 rounded-xl border border-dashed border-slate-200 bg-slate-50/60"
-                  >
-                    <div className={`p-2 rounded-lg ${ch.color.split(" ")[0]}`}>
-                      <Zap className={`w-4 h-4 ${ch.color.split(" ")[1]}`} />
+              {/* ── Slack ───────────────────────────────────── */}
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader className="pb-0 pt-5 px-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-emerald-50 rounded-lg">
+                        <MessageSquare className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-semibold">Slack</CardTitle>
+                        <CardDescription className="text-xs">
+                          Send alerts via Slack webhook
+                        </CardDescription>
+                      </div>
                     </div>
-                    <div className="flex-1">
-                      <div className="text-sm font-medium text-slate-500">{ch.name}</div>
-                      <div className="text-[11px] text-slate-400">{ch.desc}</div>
-                    </div>
-                    <Badge variant="outline" className="text-[10px] border-slate-200 text-slate-400 font-normal">
-                      Coming Soon
-                    </Badge>
+                    <Switch
+                      id="slack-enabled"
+                      checked={slackConfig.enabled}
+                      onCheckedChange={(checked) =>
+                        setSlackConfig((prev) => ({ ...prev, enabled: checked }))
+                      }
+                    />
                   </div>
-                ))}
-              </div>
+                </CardHeader>
+                {slackConfig.enabled && (
+                  <CardContent className="px-5 pt-4 pb-5 space-y-4">
+                    <Separator />
+
+                    {/* Webhook URL */}
+                    <div className="space-y-2">
+                      <Label htmlFor="slack-webhook" className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        Webhook URL
+                      </Label>
+                      <div className="flex gap-2">
+                        <Input
+                          id="slack-webhook"
+                          type="url"
+                          placeholder="https://hooks.slack.com/services/..."
+                          value={slackConfig.webhookUrl}
+                          onChange={(e) =>
+                            setSlackConfig((prev) => ({
+                              ...prev,
+                              webhookUrl: e.target.value,
+                            }))
+                          }
+                          className="flex-1 font-mono text-xs h-9"
+                        />
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={handleTestSlack}
+                          disabled={slackTesting || !slackConfig.webhookUrl}
+                          className="shrink-0 h-9"
+                        >
+                          {slackTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                          Test
+                        </Button>
+                      </div>
+                      {slackTestStatus === "success" && (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Test message sent! Check your Slack channel.
+                        </div>
+                      )}
+                      {slackTestStatus === "error" && (
+                        <div className="flex items-center gap-1.5 text-xs text-red-600">
+                          <XCircle className="w-3.5 h-3.5" />
+                          {slackTestError || "Failed to send test message"}
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Create an Incoming Webhook in your Slack workspace and paste the URL here.
+                      </p>
+                    </div>
+
+                    {/* Event Toggles */}
+                    <div>
+                      <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 block">
+                        Alert Types
+                      </Label>
+                      <div className="space-y-1.5">
+                        {NOTIFICATION_EVENTS.map((event) => (
+                          <EventToggleRow
+                            key={`slack-${event.value}`}
+                            label={event.label}
+                            description={event.description}
+                            checked={slackConfig.events.includes(event.value)}
+                            onCheckedChange={() => toggleSlackEvent(event.value)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
+
+              {/* ── Telegram ───────────────────────────────────── */}
+              <Card className="border-slate-200 shadow-sm">
+                <CardHeader className="pb-0 pt-5 px-5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-blue-50 rounded-lg">
+                        <Send className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-sm font-semibold">Telegram</CardTitle>
+                        <CardDescription className="text-xs">
+                          Send alerts via Telegram Bot
+                        </CardDescription>
+                      </div>
+                    </div>
+                    <Switch
+                      id="telegram-enabled"
+                      checked={telegramConfig.enabled}
+                      onCheckedChange={(checked) =>
+                        setTelegramConfig((prev) => ({ ...prev, enabled: checked }))
+                      }
+                    />
+                  </div>
+                </CardHeader>
+                {telegramConfig.enabled && (
+                  <CardContent className="px-5 pt-4 pb-5 space-y-4">
+                    <Separator />
+
+                    {/* Bot Token & Chat ID */}
+                    <div className="space-y-3">
+                      <div className="space-y-2">
+                        <Label htmlFor="telegram-token" className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Bot Token
+                        </Label>
+                        <Input
+                          id="telegram-token"
+                          type="password"
+                          placeholder="123456789:ABCDefghIJKlmNoPQRsTUVWxyZ"
+                          value={telegramConfig.botToken}
+                          onChange={(e) =>
+                            setTelegramConfig((prev) => ({
+                              ...prev,
+                              botToken: e.target.value,
+                            }))
+                          }
+                          className="font-mono text-xs h-9"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="telegram-chatid" className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                          Chat ID
+                        </Label>
+                        <div className="flex gap-2">
+                          <Input
+                            id="telegram-chatid"
+                            type="text"
+                            placeholder="e.g. -1001234567890"
+                            value={telegramConfig.chatId}
+                            onChange={(e) =>
+                              setTelegramConfig((prev) => ({
+                                ...prev,
+                                chatId: e.target.value,
+                              }))
+                            }
+                            className="flex-1 font-mono text-xs h-9"
+                          />
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleTestTelegram}
+                            disabled={telegramTesting || !telegramConfig.botToken || !telegramConfig.chatId}
+                            className="shrink-0 h-9"
+                          >
+                            {telegramTesting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                            Test
+                          </Button>
+                        </div>
+                      </div>
+                      
+                      {telegramTestStatus === "success" && (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-600 mt-2">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          Test message sent! Check your Telegram app.
+                        </div>
+                      )}
+                      {telegramTestStatus === "error" && (
+                        <div className="flex items-center gap-1.5 text-xs text-red-600 mt-2">
+                          <XCircle className="w-3.5 h-3.5" />
+                          {telegramTestError || "Failed to send test message"}
+                        </div>
+                      )}
+                      <p className="text-[11px] text-slate-400 leading-relaxed">
+                        Create a bot via BotFather to get a token. Add the bot to a group or chat with it to get your Chat ID.
+                      </p>
+                    </div>
+
+                    {/* Event Toggles */}
+                    <div>
+                      <Label className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3 block">
+                        Alert Types
+                      </Label>
+                      <div className="space-y-1.5">
+                        {NOTIFICATION_EVENTS.map((event) => (
+                          <EventToggleRow
+                            key={`telegram-${event.value}`}
+                            label={event.label}
+                            description={event.description}
+                            checked={telegramConfig.events.includes(event.value)}
+                            onCheckedChange={() => toggleTelegramEvent(event.value)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </CardContent>
+                )}
+              </Card>
             </div>
 
             {/* ── Bottom Save Bar ─────────────────────────────── */}

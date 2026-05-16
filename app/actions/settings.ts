@@ -10,6 +10,8 @@ import { z } from "zod";
 import type { NotificationChannels } from "@/lib/types/settings";
 import { sendDiscordTestMessage } from "@/lib/discord";
 import { sendTestEmail } from "@/lib/notifications";
+import { sendSlackTestMessage } from "@/lib/slack";
+import { sendTelegramTestMessage } from "@/lib/telegram";
 
 // ─── Helper ──────────────────────────────────────────────────
 
@@ -36,7 +38,7 @@ export async function getUserSettings() {
 
 // ─── Upsert Settings (create or update) ─────────────────────
 
-const notificationEventSchema = z.enum(["domain_expiry", "ssl_expiry", "sync_report"]);
+const notificationEventSchema = z.enum(["domain_expiry", "ssl_expiry", "sync_report", "dns_change"]);
 
 const discordChannelSchema = z.object({
   webhookUrl: z.string().url("Must be a valid URL").refine(
@@ -52,10 +54,28 @@ const emailChannelSchema = z.object({
   events: z.array(notificationEventSchema),
 });
 
+const slackChannelSchema = z.object({
+  webhookUrl: z.string().url("Must be a valid URL").refine(
+    (url) => url.startsWith("https://hooks.slack.com/services/"),
+    "Must be a valid Slack webhook URL"
+  ),
+  enabled: z.boolean(),
+  events: z.array(notificationEventSchema),
+});
+
+const telegramChannelSchema = z.object({
+  botToken: z.string().min(1, "Bot token is required"),
+  chatId: z.string().min(1, "Chat ID is required"),
+  enabled: z.boolean(),
+  events: z.array(notificationEventSchema),
+});
+
 const channelsSchema = z.object({
   email: emailChannelSchema.optional(),
   discord: discordChannelSchema.optional(),
-}).passthrough(); // Allow future channels without breaking validation
+  slack: slackChannelSchema.optional(),
+  telegram: telegramChannelSchema.optional(),
+}).passthrough();
 
 const updateSettingsSchema = z.object({
   notificationsEnabled: z.boolean(),
@@ -150,3 +170,56 @@ export async function testEmailNotification() {
     return { error: error.message || "Failed to send test email. Check SMTP settings." };
   }
 }
+
+// ─── Test Slack Webhook ─────────────────────────────────────
+
+const testSlackSchema = z.object({
+  webhookUrl: z.string().url().refine(
+    (url) => url.startsWith("https://hooks.slack.com/services/"),
+    "Must be a valid Slack webhook URL"
+  ),
+});
+
+export async function testSlackWebhook(webhookUrl: string) {
+  const user = await getAuthenticatedUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const parsed = testSlackSchema.safeParse({ webhookUrl });
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message };
+  }
+
+  try {
+    await sendSlackTestMessage(parsed.data.webhookUrl);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Slack test failed:", error);
+    return { error: error.message || "Failed to send Slack test message" };
+  }
+}
+
+// ─── Test Telegram Bot ──────────────────────────────────────
+
+const testTelegramSchema = z.object({
+  botToken: z.string().min(1),
+  chatId: z.string().min(1),
+});
+
+export async function testTelegramBot(botToken: string, chatId: string) {
+  const user = await getAuthenticatedUser();
+  if (!user) return { error: "Unauthorized" };
+
+  const parsed = testTelegramSchema.safeParse({ botToken, chatId });
+  if (!parsed.success) {
+    return { error: "Bot token and Chat ID are required" };
+  }
+
+  try {
+    await sendTelegramTestMessage(parsed.data.botToken, parsed.data.chatId);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Telegram test failed:", error);
+    return { error: error.message || "Failed to send Telegram test message" };
+  }
+}
+
