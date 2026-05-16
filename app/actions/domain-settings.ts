@@ -9,7 +9,8 @@ import { revalidatePath } from "next/cache";
 export async function updateDomainSettings(
   domainId: string,
   syncIntervalHours: number,
-  alertDays: number[]
+  alertDays: number[],
+  syncFeatures: string[]
 ) {
   const user = await getAuthenticatedUser();
   if (!user) return { error: "Unauthorized" };
@@ -29,6 +30,7 @@ export async function updateDomainSettings(
       .set({
         syncIntervalHours,
         alertDays,
+        syncFeatures,
         updatedAt: new Date(),
       })
       .where(eq(domains.id, domainId));

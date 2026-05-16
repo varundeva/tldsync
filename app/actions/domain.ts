@@ -226,9 +226,13 @@ export async function syncDomain(domainId: string) {
     }
   }
 
-  // Verified: full sync across all 8 tables
+  // Verified: full sync across enabled tables
   try {
-    const { expirationDate, sslValidTo } = await syncDomainData(domainId, domain.domainName);
+    const { expirationDate, sslValidTo } = await syncDomainData(
+      domainId, 
+      domain.domainName, 
+      domain.syncFeatures as string[]
+    );
     
     await processAlerts(
       domain.domainName,

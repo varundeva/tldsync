@@ -6,24 +6,39 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
-import { Loader2, Save, Settings2, CheckCircle2, AlertCircle, Clock, BellRing, Sparkles, X, Plus } from "lucide-react";
+import { Loader2, Save, Settings2, CheckCircle2, AlertCircle, Clock, BellRing, Sparkles, X, Plus, Activity, CheckSquare, Square } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 
 interface DomainSettingsFormProps {
   domainId: string;
   domainName: string;
   syncIntervalHours: number;
   alertDays: number[];
+  syncFeatures: string[];
 }
+
+const ALL_FEATURES = [
+  { id: "whois", label: "WHOIS Information", description: "Fetch registrar and expiration dates" },
+  { id: "dns", label: "DNS Records", description: "Monitor A, MX, TXT, and other records" },
+  { id: "ssl", label: "SSL Certificate", description: "Verify validity and expiration of SSL cert" },
+  { id: "http", label: "HTTP Status", description: "Check server response and security headers" },
+  { id: "rdap", label: "RDAP Data", description: "Fetch advanced registration metadata" },
+  { id: "email", label: "Email Security", description: "Monitor SPF, DKIM, and DMARC records" },
+  { id: "subdomains", label: "Subdomains", description: "Discover and track common subdomains" },
+];
 
 export default function DomainSettingsForm({
   domainId,
   domainName,
   syncIntervalHours: initialInterval,
   alertDays: initialAlertDays,
+  syncFeatures: initialFeatures,
 }: DomainSettingsFormProps) {
   const [syncInterval, setSyncInterval] = useState(initialInterval.toString());
   const [alertDays, setAlertDays] = useState<number[]>(initialAlertDays.sort((a, b) => b - a));
+  const [syncFeatures, setSyncFeatures] = useState<string[]>(initialFeatures);
   const [customDay, setCustomDay] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">("idle");
@@ -49,7 +64,7 @@ export default function DomainSettingsForm({
     }
 
     setIsSaving(true);
-    const res = await updateDomainSettings(domainId, parsedInterval, alertDays);
+    const res = await updateDomainSettings(domainId, parsedInterval, alertDays, syncFeatures);
     setIsSaving(false);
 
     if (res.error) {
@@ -75,6 +90,18 @@ export default function DomainSettingsForm({
       setAlertDays([...alertDays, day].sort((a, b) => b - a));
       setCustomDay("");
     }
+  };
+
+  const toggleFeature = (featureId: string) => {
+    setSyncFeatures(prev => 
+      prev.includes(featureId) 
+        ? prev.filter(f => f !== featureId) 
+        : [...prev, featureId]
+    );
+  };
+
+  const setAllFeatures = (enable: boolean) => {
+    setSyncFeatures(enable ? ALL_FEATURES.map(f => f.id) : []);
   };
 
   return (
@@ -117,13 +144,66 @@ export default function DomainSettingsForm({
                     className="max-w-xs font-mono"
                   />
                   <p className="text-xs text-slate-500 leading-relaxed max-w-lg">
-                    Define how frequently the automated background worker will pull fresh WHOIS, DNS, and SSL data. A lower number means faster updates, but typically 24 hours is optimal for domains.
+                    Define how frequently the automated background worker will pull fresh data.
                   </p>
                 </div>
               </div>
             </div>
 
-            <hr className="border-slate-100" />
+            <Separator className="bg-slate-100" />
+
+            {/* Sync Features */}
+            <div className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Activity className="w-5 h-5 text-emerald-400 mt-0.5" />
+                <div className="flex-1 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-sm font-semibold text-slate-700">
+                      Sync Features
+                    </Label>
+                    <div className="flex gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 text-[10px] uppercase font-bold text-slate-400 hover:text-indigo-600 px-2"
+                        onClick={() => setAllFeatures(true)}
+                      >
+                        <CheckSquare className="w-3 h-3 mr-1" /> Select All
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-7 text-[10px] uppercase font-bold text-slate-400 hover:text-red-600 px-2"
+                        onClick={() => setAllFeatures(false)}
+                      >
+                        <Square className="w-3 h-3 mr-1" /> Clear All
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 p-4 rounded-xl border border-slate-100 bg-slate-50/50">
+                    {ALL_FEATURES.map((feature) => (
+                      <div key={feature.id} className="flex items-center justify-between gap-4 group">
+                        <div className="space-y-0.5">
+                          <Label className="text-sm font-medium text-slate-700 group-hover:text-indigo-600 transition-colors">
+                            {feature.label}
+                          </Label>
+                          <p className="text-[10px] text-slate-400">
+                            {feature.description}
+                          </p>
+                        </div>
+                        <Switch
+                          checked={syncFeatures.includes(feature.id)}
+                          onCheckedChange={() => toggleFeature(feature.id)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <Separator className="bg-slate-100" />
 
             <div className="space-y-4">
               <div className="flex items-start gap-3">

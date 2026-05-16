@@ -73,6 +73,7 @@ export const domains = pgTable("domains", {
   lastSyncedAt: timestamp("lastSyncedAt"),
   syncIntervalHours: integer("syncIntervalHours").notNull().default(24),
   alertDays: jsonb("alertDays").$type<number[]>().notNull().default([30, 14, 7, 3, 2, 1]),
+  syncFeatures: jsonb("syncFeatures").$type<string[]>().notNull().default(["whois", "dns", "ssl", "http", "rdap", "email", "subdomains"]),
 
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull(),

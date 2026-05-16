@@ -57,10 +57,11 @@ export async function GET(request: Request) {
     // 3. Process each domain
     for (const { domain, userEmail, userId } of domainsToSync) {
       try {
-        // Sync all 8 normalised tables + get dates for alerts
+        // Sync enabled normalised tables + get dates for alerts
         const { expirationDate, sslValidTo } = await syncDomainData(
           domain.id,
-          domain.domainName
+          domain.domainName,
+          domain.syncFeatures as string[]
         );
 
         // 4. Trigger alert evaluation (reads dates from new tables)

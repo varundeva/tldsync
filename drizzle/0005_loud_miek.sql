@@ -1,0 +1,1 @@
+ALTER TABLE "domains" ADD COLUMN "syncFeatures" jsonb DEFAULT '["whois","dns","ssl","http","rdap","email","subdomains"]'::jsonb NOT NULL;

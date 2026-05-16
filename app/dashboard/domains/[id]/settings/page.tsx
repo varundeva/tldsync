@@ -62,6 +62,7 @@ export default async function DomainSettingsPage({
           domainName={domain.domainName}
           syncIntervalHours={domain.syncIntervalHours}
           alertDays={domain.alertDays as number[]}
+          syncFeatures={domain.syncFeatures as string[]}
         />
       </div>
     </div>
