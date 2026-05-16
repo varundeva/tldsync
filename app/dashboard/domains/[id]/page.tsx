@@ -1,5 +1,14 @@
 import { db } from "@/db";
-import { domains } from "@/db/schema";
+import {
+  domains,
+  domainWhois,
+  domainDnsRecords,
+  domainSsl,
+  domainHttp,
+  domainRdap,
+  domainEmailSecurity,
+  domainSubdomains,
+} from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -17,6 +26,7 @@ import { ArrowLeft, Shield, Clock, Server, Globe } from "lucide-react";
 import Link from "next/link";
 import DomainDataTabs from "./domain-data-tabs";
 import DomainSyncButton from "./domain-sync-button";
+import type { ComprehensiveDomainData, NsRecord } from "@/lib/domain-lookup/types";
 
 export default async function DomainDetailsPage({
   params,
@@ -40,9 +50,59 @@ export default async function DomainDetailsPage({
 
   const isVerified = domain.verificationStatus === "verified";
 
-  const daysLeft = domain.expirationDate
-    ? differenceInDays(domain.expirationDate, new Date())
+  // ─── Parallel join queries across normalised tables ──────────
+  const [whoisRow, dnsRows, sslRow, httpRow, rdapRow, emailSecRow, subdomainsRow] =
+    await Promise.all([
+      db.query.domainWhois.findFirst({ where: eq(domainWhois.domainId, id) }),
+      db.select().from(domainDnsRecords).where(eq(domainDnsRecords.domainId, id)),
+      db.query.domainSsl.findFirst({ where: eq(domainSsl.domainId, id) }),
+      db.query.domainHttp.findFirst({ where: eq(domainHttp.domainId, id) }),
+      db.query.domainRdap.findFirst({ where: eq(domainRdap.domainId, id) }),
+      db.query.domainEmailSecurity.findFirst({ where: eq(domainEmailSecurity.domainId, id) }),
+      db.query.domainSubdomains.findFirst({ where: eq(domainSubdomains.domainId, id) }),
+    ]);
+
+  // Reconstruct ComprehensiveDomainData shape from DNS rows for DomainDataTabs
+  const dnsRecordMap = Object.fromEntries(
+    dnsRows.map((r) => [r.recordType, r.recordData])
+  );
+
+  const reconstructedDnsRecords: ComprehensiveDomainData | null = isVerified
+    ? {
+        root: dnsRecordMap as unknown as ComprehensiveDomainData["root"],
+        subdomains: (subdomainsRow?.rawData ?? []) as ComprehensiveDomainData["subdomains"],
+        ssl: sslRow
+          ? {
+              issuer: sslRow.issuer ?? "",
+              subject: sslRow.subject ?? "",
+              validFrom: sslRow.validFrom?.toISOString() ?? "",
+              validTo: sslRow.validTo?.toISOString() ?? "",
+              serialNumber: sslRow.serialNumber ?? "",
+              fingerprint256: sslRow.fingerprint256 ?? "",
+              altNames: (sslRow.altNames ?? []) as string[],
+              protocol: sslRow.protocol ?? "",
+            }
+          : null,
+        http: httpRow
+          ? {
+              statusCode: httpRow.statusCode ?? 0,
+              redirectUrl: httpRow.redirectUrl ?? null,
+              server: httpRow.server ?? null,
+              poweredBy: httpRow.poweredBy ?? null,
+              headers: (httpRow.headers ?? {}) as Record<string, string>,
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              securityHeaders: (httpRow.securityHeaders ?? {}) as any,
+            }
+          : null,
+        emailSecurity: (emailSecRow?.rawData ?? {
+          dmarc: [], spf: [], dkim: [], bimi: [], mtaSts: [], tlsRpt: [],
+        }) as ComprehensiveDomainData["emailSecurity"],
+      }
     : null;
+
+  const expirationDate = whoisRow?.expirationDate ?? null;
+  const daysLeft = expirationDate ? differenceInDays(expirationDate, new Date()) : null;
+  const nameServers = (whoisRow?.nameServers ?? null) as NsRecord[] | null;
 
   let statusColor = "bg-slate-400";
   let statusText = "Unknown";
@@ -61,13 +121,6 @@ export default async function DomainDetailsPage({
       statusText = `Expires in ${daysLeft} days`;
     }
   }
-
-  // Parse stored data
-  const whoisData = domain.whoisData ? JSON.parse(domain.whoisData) : null;
-  const dnsRecords = domain.dnsRecords ? JSON.parse(domain.dnsRecords) : null;
-  const nameServers = domain.nameServers
-    ? JSON.parse(domain.nameServers)
-    : null;
 
   return (
     <div className="space-y-6">
@@ -97,8 +150,8 @@ export default async function DomainDetailsPage({
               )}
             </h1>
             <p className="text-slate-500 mt-1">
-              {domain.registrar
-                ? `Registered with ${domain.registrar}`
+              {whoisRow?.registrar
+                ? `Registered with ${whoisRow.registrar}`
                 : "Tracking public domain info"}
             </p>
           </div>
@@ -121,7 +174,7 @@ export default async function DomainDetailsPage({
         <Card className="border-indigo-200 bg-indigo-50/50">
           <CardHeader>
             <CardTitle className="text-indigo-800">
-              Verify Ownership to Unlock Full DNS & SSL Data
+              Verify Ownership to Unlock Full DNS &amp; SSL Data
             </CardTitle>
             <CardDescription className="text-indigo-700">
               Add the following TXT record to your DNS panel to verify ownership
@@ -169,91 +222,91 @@ export default async function DomainDetailsPage({
           </CardHeader>
           <CardContent>
             <div className="text-sm font-semibold text-slate-900">
-              {domain.registrationDate
-                ? `${format(domain.registrationDate, "PPp")} (Local Time)`
+              {whoisRow?.registrationDate
+                ? `${format(whoisRow.registrationDate, "PPp")} (Local Time)`
                 : "—"}
             </div>
           </CardContent>
         </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Expiration Date
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm font-semibold text-slate-900">
-                  {domain.expirationDate
-                    ? `${format(domain.expirationDate, "PPp")} (Local Time)`
-                    : "—"}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Registrar
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-semibold text-slate-900 truncate">
-                  {domain.registrar || "—"}
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-medium text-slate-500 uppercase tracking-wider">
-                  Last Synced
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="text-sm font-semibold text-slate-900">
-                  {domain.lastSyncedAt
-                    ? `${format(domain.lastSyncedAt, "PPp")} (Local Time)`
-                    : "—"}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              Expiration Date
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm font-semibold text-slate-900">
+              {expirationDate
+                ? `${format(expirationDate, "PPp")} (Local Time)`
+                : "—"}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              Registrar
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-lg font-semibold text-slate-900 truncate">
+              {whoisRow?.registrar || "—"}
+            </div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+              Last Synced
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-sm font-semibold text-slate-900">
+              {domain.lastSyncedAt
+                ? `${format(domain.lastSyncedAt, "PPp")} (Local Time)`
+                : "—"}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-          {/* Name Servers */}
-          {nameServers && nameServers.length > 0 && (
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Server className="w-4 h-4 text-indigo-600" />
-                  Name Servers
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {nameServers.map((record: any, i: number) => (
-                    <div key={i} className="flex flex-col gap-1">
-                      <Badge
-                        variant="outline"
-                        className="font-mono text-sm px-3 py-1"
-                      >
-                        <Globe className="w-3 h-3 mr-1.5 text-slate-400" />
-                        {record.nameserver}
-                      </Badge>
-                      <div className="flex items-center justify-between px-1">
-                        <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
-                        <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
-                          {record.provider}
-                        </Badge>
-                      </div>
-                    </div>
-                  ))}
+      {/* Name Servers */}
+      {nameServers && nameServers.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Server className="w-4 h-4 text-indigo-600" />
+              Name Servers
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {nameServers.map((record, i) => (
+                <div key={i} className="flex flex-col gap-1">
+                  <Badge
+                    variant="outline"
+                    className="font-mono text-sm px-3 py-1"
+                  >
+                    <Globe className="w-3 h-3 mr-1.5 text-slate-400" />
+                    {record.nameserver}
+                  </Badge>
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                    <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
+                      {record.provider}
+                    </Badge>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
-      {/* DNS & WHOIS Tabs — using stored data */}
+      {/* DNS & WHOIS Tabs — using normalised table data */}
       <DomainDataTabs
-        dnsRecords={isVerified ? dnsRecords : null}
-        whoisData={whoisData}
+        dnsRecords={reconstructedDnsRecords}
+        whoisData={whoisRow?.rawData as Record<string, string> | null}
         isVerified={isVerified}
       />
     </div>

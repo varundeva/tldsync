@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import dns from "dns/promises";
-import { fetchWhoisInfo } from "@/lib/domain-lookup/index";
+import { fetchWhoisInfo, fetchComprehensiveDomainData } from "@/lib/domain-lookup/index";
 
 export async function GET(
   req: NextRequest,
@@ -16,38 +15,23 @@ export async function GET(
   }
 
   try {
-    const [a, aaaa, mx, txt, cname, ns, soa, caa, srv, naptr, ptr, whoisData] =
-      await Promise.allSettled([
-        dns.resolve4(name).catch(() => []),
-        dns.resolve6(name).catch(() => []),
-        dns.resolveMx(name).catch(() => []),
-        dns.resolveTxt(name).catch(() => []),
-        dns.resolveCname(name).catch(() => []),
-        dns.resolveNs(name).catch(() => []),
-        dns.resolveSoa(name).catch(() => null),
-        dns.resolveCaa(name).catch(() => []),
-        dns.resolveSrv(name).catch(() => []),
-        dns.resolveNaptr(name).catch(() => []),
-        dns.resolvePtr(name).catch(() => []),
-        fetchWhoisInfo(name).catch(() => null),
-      ]);
+    // Use the same DoH-based comprehensive fetch used everywhere else
+    const [comprehensiveData, whoisData] = await Promise.allSettled([
+      fetchComprehensiveDomainData(name),
+      fetchWhoisInfo(name),
+    ]);
 
-    return NextResponse.json({
-      dns: {
-        A: a.status === "fulfilled" ? a.value : [],
-        AAAA: aaaa.status === "fulfilled" ? aaaa.value : [],
-        MX: mx.status === "fulfilled" ? mx.value : [],
-        TXT: txt.status === "fulfilled" ? txt.value : [],
-        CNAME: cname.status === "fulfilled" ? cname.value : [],
-        NS: ns.status === "fulfilled" ? ns.value : [],
-        SOA: soa.status === "fulfilled" ? soa.value : null,
-        CAA: caa.status === "fulfilled" ? caa.value : [],
-        SRV: srv.status === "fulfilled" ? srv.value : [],
-        NAPTR: naptr.status === "fulfilled" ? naptr.value : [],
-        PTR: ptr.status === "fulfilled" ? ptr.value : [],
-      },
-      whois: whoisData.status === "fulfilled" ? whoisData.value?.raw || null : null,
-    });
+    const dns =
+      comprehensiveData.status === "fulfilled"
+        ? comprehensiveData.value.root
+        : null;
+
+    const whois =
+      whoisData.status === "fulfilled" && whoisData.value
+        ? whoisData.value.raw
+        : null;
+
+    return NextResponse.json({ dns, whois });
   } catch (error) {
     console.error("Error fetching domain data:", error);
     return NextResponse.json(

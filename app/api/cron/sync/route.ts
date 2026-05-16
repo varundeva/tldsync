@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { db } from "@/db";
-import { domains, user, userSettings } from "@/db/schema";
+import { domains, user, userSettings, domainWhois, domainSsl } from "@/db/schema";
 import { eq } from "drizzle-orm";
-import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup/index";
+import { syncDomainData } from "@/lib/domain-sync";
 import { processAlerts } from "@/lib/notifications";
 import type { NotificationChannels } from "@/lib/types/settings";
 import { sendDiscordSyncReport, type SyncReportDomain } from "@/lib/discord";
@@ -20,7 +20,7 @@ export async function GET(request: Request) {
   }
 
   try {
-    // 2. Fetch all verified domains joined with their users to get the email address
+    // 2. Fetch all verified domains joined with their users
     const allDomains = await db
       .select({
         domain: domains,
@@ -30,7 +30,7 @@ export async function GET(request: Request) {
       .from(domains)
       .innerJoin(user, eq(domains.userId, user.id))
       .where(eq(domains.verificationStatus, "verified"));
-    
+
     if (allDomains.length === 0) {
       return NextResponse.json({ message: "No domains to sync", success: true });
     }
@@ -45,54 +45,37 @@ export async function GET(request: Request) {
     // Group domains by user for sync reports
     const userDomainMap = new Map<string, { email: string; domains: SyncReportDomain[] }>();
 
-    // 3. Process each domain iteratively
+    // 3. Process each domain
     for (const { domain, userEmail, userId } of allDomains) {
       try {
-        const now = new Date();
-        
-        // Track everything deeply for verified owners
-        const [whoisData, comprehensiveData] = await Promise.all([
-          fetchWhoisInfo(domain.domainName).catch(() => null),
-          fetchComprehensiveDomainData(domain.domainName).catch(() => null),
-        ]);
+        // Sync all 8 normalised tables + get dates for alerts
+        const { expirationDate, sslValidTo } = await syncDomainData(
+          domain.id,
+          domain.domainName
+        );
 
-        const registrar = whoisData?.registrar || domain.registrar;
-        const registrationDate = whoisData?.creationDate
-          ? new Date(whoisData.creationDate)
-          : domain.registrationDate;
-        const expirationDate = whoisData?.expirationDate
-          ? new Date(whoisData.expirationDate)
-          : domain.expirationDate;
-        const nameServers = comprehensiveData?.root?.NS?.length
-          ? JSON.stringify(comprehensiveData.root.NS)
-          : domain.nameServers;
+        // 4. Trigger alert evaluation (reads dates from new tables)
+        await processAlerts(
+          domain.domainName,
+          userEmail,
+          expirationDate,
+          sslValidTo,
+          userId,
+          domain.id
+        );
 
-        await db
-          .update(domains)
-          .set({
-            registrar,
-            registrationDate,
-            expirationDate,
-            nameServers,
-            whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
-            dnsRecords: comprehensiveData ? JSON.stringify(comprehensiveData) : domain.dnsRecords,
-            lastSyncedAt: now,
-            updatedAt: now,
-          })
-          .where(eq(domains.id, domain.id));
+        // Collect for sync report — read registrar from domain_whois
+        const whoisRow = await db.query.domainWhois.findFirst({
+          where: eq(domainWhois.domainId, domain.id),
+        });
 
-        // 4. Trigger Alert module evaluation (now with userId for settings lookup)
-        const sslValidTo = comprehensiveData?.ssl?.validTo || null;
-        await processAlerts(domain.domainName, userEmail, expirationDate, sslValidTo, userId);
-
-        // Collect domains for sync report
         if (!userDomainMap.has(userId)) {
           userDomainMap.set(userId, { email: userEmail, domains: [] });
         }
         userDomainMap.get(userId)!.domains.push({
           domainName: domain.domainName,
           expirationDate,
-          registrar,
+          registrar: whoisRow?.registrar ?? null,
           status: domain.verificationStatus,
         });
 

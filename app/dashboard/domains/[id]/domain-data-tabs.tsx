@@ -93,7 +93,7 @@ export default function DomainDataTabs({
 
   return (
     <Tabs defaultValue={isVerified ? "dns" : "whois"} className="w-full">
-      <TabsList className="grid grid-cols-3 sm:grid-cols-5 w-full max-w-2xl h-auto gap-1 mb-6">
+      <TabsList className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 w-full h-auto gap-1 mb-6">
         <TabsTrigger value="dns" disabled={!isVerified} className="flex items-center gap-1.5 text-xs">
           <Server className="w-3.5 h-3.5" />
           DNS
@@ -332,12 +332,12 @@ export default function DomainDataTabs({
                   const type = value.startsWith("v=spf")
                     ? "SPF"
                     : value.includes("dkim") || value.startsWith("v=DKIM")
-                    ? "DKIM"
-                    : value.startsWith("v=DMARC")
-                    ? "DMARC"
-                    : value.includes("verify")
-                    ? "Verification"
-                    : "TXT";
+                      ? "DKIM"
+                      : value.startsWith("v=DMARC")
+                        ? "DMARC"
+                        : value.includes("verify")
+                          ? "Verification"
+                          : "TXT";
                   return (
                     <div
                       key={i}
@@ -406,7 +406,7 @@ export default function DomainDataTabs({
               <Table>
                 <TableHeader>
                   <TableRow>
-                     <TableHead>Tag</TableHead>
+                    <TableHead>Tag</TableHead>
                     <TableHead>Value</TableHead>
                     <TableHead>TTL</TableHead>
                     <TableHead>Provider</TableHead>
@@ -427,7 +427,7 @@ export default function DomainDataTabs({
                         {caa.ttl}s
                       </TableCell>
                       <TableCell>
-                         <Badge variant="secondary" className="text-[10px]">
+                        <Badge variant="secondary" className="text-[10px]">
                           {caa.provider}
                         </Badge>
                       </TableCell>
@@ -466,8 +466,8 @@ export default function DomainDataTabs({
                       <TableCell><Badge variant="outline" className="font-mono">{srv.weight}</Badge></TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1 items-start">
-                           <span className="text-[10px] text-slate-500">{srv.ttl}s</span>
-                           <Badge variant="secondary" className="text-[8px] scale-90 origin-left opacity-70">{srv.provider}</Badge>
+                          <span className="text-[10px] text-slate-500">{srv.ttl}s</span>
+                          <Badge variant="secondary" className="text-[8px] scale-90 origin-left opacity-70">{srv.provider}</Badge>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -528,7 +528,7 @@ export default function DomainDataTabs({
                     <Badge variant="outline" className="font-mono text-sm px-3 py-1">
                       {record.target}
                     </Badge>
-                     <div className="flex items-center justify-between px-1">
+                    <div className="flex items-center justify-between px-1">
                       <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
                       <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                         {record.provider}
@@ -613,37 +613,37 @@ export default function DomainDataTabs({
                     ))}
                   </div>
                 ) : (
-                   <p className="text-sm text-slate-500">No common DKIM selectors found via brute-force probe.</p>
+                  <p className="text-sm text-slate-500">No common DKIM selectors found via brute-force probe.</p>
                 )}
               </CardContent>
             </Card>
 
             {/* Others (BIMI, MTA-STS, TLS-RPT) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-               <Card>
-                 <CardHeader><CardTitle className="text-sm">BIMI</CardTitle></CardHeader>
-                 <CardContent>
-                   {data.emailSecurity.bimi.length > 0 ? (
-                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Configured</Badge>
-                   ) : <span className="text-xs text-slate-400">Not found</span>}
-                 </CardContent>
-               </Card>
-               <Card>
-                 <CardHeader><CardTitle className="text-sm">MTA-STS</CardTitle></CardHeader>
-                 <CardContent>
-                   {data.emailSecurity.mtaSts.length > 0 ? (
-                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Enabled</Badge>
-                   ) : <span className="text-xs text-slate-400">Not found</span>}
-                 </CardContent>
-               </Card>
-               <Card>
-                 <CardHeader><CardTitle className="text-sm">TLS-RPT</CardTitle></CardHeader>
-                 <CardContent>
-                   {data.emailSecurity.tlsRpt.length > 0 ? (
-                     <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Enabled</Badge>
-                   ) : <span className="text-xs text-slate-400">Not found</span>}
-                 </CardContent>
-               </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-sm">BIMI</CardTitle></CardHeader>
+                <CardContent>
+                  {data.emailSecurity.bimi.length > 0 ? (
+                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Configured</Badge>
+                  ) : <span className="text-xs text-slate-400">Not found</span>}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-sm">MTA-STS</CardTitle></CardHeader>
+                <CardContent>
+                  {data.emailSecurity.mtaSts.length > 0 ? (
+                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Enabled</Badge>
+                  ) : <span className="text-xs text-slate-400">Not found</span>}
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader><CardTitle className="text-sm">TLS-RPT</CardTitle></CardHeader>
+                <CardContent>
+                  {data.emailSecurity.tlsRpt.length > 0 ? (
+                    <Badge variant="secondary" className="bg-emerald-50 text-emerald-700">Enabled</Badge>
+                  ) : <span className="text-xs text-slate-400">Not found</span>}
+                </CardContent>
+              </Card>
             </div>
           </>
         ) : (

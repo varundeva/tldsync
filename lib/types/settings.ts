@@ -2,12 +2,13 @@
 // These types represent the structure stored in the `channels` JSONB column.
 // Adding a new channel = add a new interface + key here. No DB migration needed.
 
-export type NotificationEvent = "domain_expiry" | "ssl_expiry" | "sync_report";
+export type NotificationEvent = "domain_expiry" | "ssl_expiry" | "sync_report" | "dns_change";
 
 export const NOTIFICATION_EVENTS: { value: NotificationEvent; label: string; description: string }[] = [
   { value: "domain_expiry", label: "Domain Expiry Alerts", description: "Get notified when your domains are about to expire" },
   { value: "ssl_expiry", label: "SSL Certificate Alerts", description: "Get notified when SSL certificates are about to expire" },
   { value: "sync_report", label: "Sync Reports", description: "Receive a summary report after each domain sync" },
+  { value: "dns_change", label: "DNS Change Alerts", description: "Get notified when DNS records change for your domains" },
 ];
 
 export interface DiscordChannelConfig {

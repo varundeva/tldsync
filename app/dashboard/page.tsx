@@ -1,5 +1,5 @@
 import { db } from "@/db";
-import { domains } from "@/db/schema";
+import { domains, domainWhois } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
@@ -31,10 +31,18 @@ export default async function DashboardPage() {
 
   if (!session) return null;
 
-  const userDomains = await db
-    .select()
+  const rows = await db
+    .select({ domain: domains, whois: domainWhois })
     .from(domains)
+    .leftJoin(domainWhois, eq(domainWhois.domainId, domains.id))
     .where(eq(domains.userId, session.user.id));
+
+  // Flatten into a convenient shape for the template
+  const userDomains = rows.map((r) => ({
+    ...r.domain,
+    registrar: r.whois?.registrar ?? null,
+    expirationDate: r.whois?.expirationDate ?? null,
+  }));
 
   const getExpirationStatus = (expirationDate: Date | null) => {
     if (!expirationDate)

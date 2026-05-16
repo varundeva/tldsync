@@ -1,8 +1,8 @@
 import nodemailer from "nodemailer";
 import { differenceInDays } from "date-fns";
 import { db } from "@/db";
-import { userSettings } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { userSettings, dnsChangeLog } from "@/db/schema";
+import { eq, and } from "drizzle-orm";
 import type { NotificationChannels } from "@/lib/types/settings";
 import { sendDiscordExpiryAlert } from "@/lib/discord";
 
@@ -58,7 +58,8 @@ export async function processAlerts(
   userEmail: string,
   expirationDate: Date | null,
   sslValidTo: string | null,
-  userId?: string
+  userId?: string,
+  domainId?: string
 ) {
   const milestones = [60, 30, 14, 3, 2, 1];
   const now = new Date();
@@ -144,6 +145,153 @@ export async function processAlerts(
         }
       }
     }
+  }
+
+  // 3. Check dns_change_log for unalerted changes
+  if (domainId) {
+    const unalerted = await db
+      .select()
+      .from(dnsChangeLog)
+      .where(
+        and(
+          eq(dnsChangeLog.domainId, domainId),
+          eq(dnsChangeLog.alertSent, false)
+        )
+      );
+
+    for (const change of unalerted) {
+      // Email alert for DNS change
+      if (
+        channels.email?.enabled !== false &&
+        (channels.email?.events?.includes("dns_change") ?? false)
+      ) {
+        await sendDnsChangeEmailAlert(
+          userEmail,
+          domainName,
+          change.recordType,
+          change.changeType
+        );
+      }
+
+      // Discord alert for DNS change
+      if (
+        channels.discord?.enabled &&
+        channels.discord.webhookUrl &&
+        channels.discord.events?.includes("dns_change")
+      ) {
+        try {
+          await sendDiscordDnsChangeAlert(
+            channels.discord.webhookUrl,
+            domainName,
+            change.recordType,
+            change.changeType
+          );
+        } catch (err) {
+          console.error(`Discord DNS change alert failed for ${domainName}:`, err);
+        }
+      }
+
+      // Mark as alerted
+      await db
+        .update(dnsChangeLog)
+        .set({ alertSent: true })
+        .where(eq(dnsChangeLog.id, change.id));
+    }
+  }
+}
+
+// ─── DNS Change Email Alert ─────────────────────────────────
+
+async function sendDnsChangeEmailAlert(
+  to: string,
+  domainName: string,
+  recordType: string,
+  changeType: string
+) {
+  if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
+    console.warn("SMTP credentials missing. DNS change email skipped.");
+    return;
+  }
+
+  const subject = `DNS Change Detected: ${domainName} ${recordType} record ${changeType}`;
+  const html = `
+    <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
+      <div style="background-color: #6366f1; padding: 20px; text-align: center;">
+        <h2 style="color: white; margin: 0;">DNS Change Detected</h2>
+      </div>
+      <div style="padding: 20px;">
+        <p>Hello,</p>
+        <p>This is an automated alert from <strong>TLDsync</strong>. A DNS record change was detected for <strong>${domainName}</strong>.</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px 0; color: #64748b;">Domain</td>
+            <td style="padding: 10px 0; font-weight: bold;">${domainName}</td>
+          </tr>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px 0; color: #64748b;">Record Type</td>
+            <td style="padding: 10px 0; font-weight: bold;">${recordType}</td>
+          </tr>
+          <tr>
+            <td style="padding: 10px 0; color: #64748b;">Change Type</td>
+            <td style="padding: 10px 0; font-weight: bold; text-transform: capitalize;">${changeType}</td>
+          </tr>
+        </table>
+        <p>Please log in to TLDsync to review the full change details.</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    await transporter.sendMail({
+      from: `"TLDsync Alerts" <${SMTP_FROM}>`,
+      to,
+      subject,
+      html,
+    });
+    console.log(`DNS change email sent for ${domainName} - ${recordType} ${changeType}`);
+  } catch (err) {
+    console.error(`Failed to send DNS change email for ${domainName}:`, err);
+  }
+}
+
+// ─── DNS Change Discord Alert ────────────────────────────────
+
+async function sendDiscordDnsChangeAlert(
+  webhookUrl: string,
+  domainName: string,
+  recordType: string,
+  changeType: string
+) {
+  const colorMap: Record<string, number> = {
+    created: 0x22c55e, // green
+    modified: 0xf59e0b, // amber
+    deleted: 0xef4444, // red
+  };
+  const color = colorMap[changeType] ?? 0x6366f1;
+
+  const payload = {
+    embeds: [
+      {
+        title: `🔔 DNS Change: ${domainName}`,
+        color,
+        fields: [
+          { name: "Record Type", value: recordType, inline: true },
+          { name: "Change", value: changeType.charAt(0).toUpperCase() + changeType.slice(1), inline: true },
+        ],
+        footer: { text: "TLDsync DNS Monitor" },
+        timestamp: new Date().toISOString(),
+      },
+    ],
+  };
+
+  const res = await fetch(webhookUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    throw new Error(`Discord webhook failed: ${res.status}`);
   }
 }
 

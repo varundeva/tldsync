@@ -1,14 +1,17 @@
 "use server";
 
 import { db } from "@/db";
-import { domains } from "@/db/schema";
+import { domains, domainWhois, dnsChangeLog } from "@/db/schema";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { eq, and } from "drizzle-orm";
 import { z } from "zod";
-import { fetchComprehensiveDomainData, fetchWhoisInfo } from "@/lib/domain-lookup/index";
+import { fetchWhoisInfo } from "@/lib/domain-lookup/index";
 import { fetchDohRaw } from "@/lib/domain-lookup/doh-dns";
+import { syncDomainData } from "@/lib/domain-sync";
+import { md5 } from "@/lib/utils/hash";
+
 // ─── Schemas ─────────────────────────────────────────────────
 
 const addDomainSchema = z.object({
@@ -31,7 +34,7 @@ async function getAuthenticatedUser() {
   return session.user;
 }
 
-// ─── 1. Add Domain (only domain name required) ─────────────
+// ─── 1. Add Domain ──────────────────────────────────────────
 
 export async function addDomain(formData: FormData) {
   const user = await getAuthenticatedUser();
@@ -58,52 +61,59 @@ export async function addDomain(formData: FormData) {
     return { error: "This domain is already in your portfolio" };
   }
 
-  // Generate a unique verification token
   const verificationToken = `domain-tracker-verify=${crypto.randomUUID().replace(/-/g, "").substring(0, 16)}`;
 
   try {
     const now = new Date();
     const domainId = crypto.randomUUID();
 
-    // Pre-fetch WHOIS data immediately so unverified owners can track publicly available data
-    const whoisData = await fetchWhoisInfo(parsed.data.domainName).catch(() => null);
-
-    const registrar = whoisData?.registrar || null;
-    const registrationDate = whoisData?.creationDate
-      ? new Date(whoisData.creationDate)
-      : null;
-    const expirationDate = whoisData?.expirationDate
-      ? new Date(whoisData.expirationDate)
-      : null;
-
+    // Insert domain identity row (no blob fields)
     await db.insert(domains).values({
       id: domainId,
       userId: user.id,
       domainName: parsed.data.domainName,
       verificationToken,
       verificationStatus: "pending",
-      registrar,
-      registrationDate,
-      expirationDate,
-      whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : null,
       lastSyncedAt: now,
       createdAt: now,
       updatedAt: now,
     });
 
+    // Pre-fetch WHOIS so unverified owners can see publicly available data
+    const whoisData = await fetchWhoisInfo(parsed.data.domainName).catch(() => null);
+
+    if (whoisData) {
+      const registrar = whoisData.registrar ?? null;
+      const registrationDate = whoisData.creationDate ? new Date(whoisData.creationDate) : null;
+      const expirationDate = whoisData.expirationDate ? new Date(whoisData.expirationDate) : null;
+      const dataHash = md5([registrar, expirationDate?.toISOString() ?? ""].join("|"));
+
+      await db.insert(domainWhois).values({
+        id: crypto.randomUUID(),
+        domainId,
+        registrar,
+        registrationDate,
+        expirationDate,
+        nameServers: null,
+        rawData: whoisData.raw ?? null,
+        dataHash,
+        fetchedAt: now,
+        updatedAt: now,
+      }).onConflictDoUpdate({
+        target: domainWhois.domainId,
+        set: { registrar, registrationDate, expirationDate, rawData: whoisData.raw ?? null, dataHash, fetchedAt: now, updatedAt: now },
+      });
+    }
+
     revalidatePath("/dashboard");
-    return {
-      success: true,
-      domainId,
-      verificationToken,
-    };
+    return { success: true, domainId, verificationToken };
   } catch (error) {
     console.error("Error adding domain:", error);
     return { error: "Failed to add domain" };
   }
 }
 
-// ─── 2. Verify Domain (check TXT record) ───────────────────
+// ─── 2. Verify Domain ───────────────────────────────────────
 
 export async function verifyDomain(domainId: string) {
   const user = await getAuthenticatedUser();
@@ -138,45 +148,20 @@ export async function verifyDomain(domainId: string) {
     if (!found) {
       return {
         error: `Verification TXT record not found. Please add a TXT record with the value: ${domain.verificationToken}`,
-        txtRecordsFound: txtRecords.map(r => r.text),
+        txtRecordsFound: txtRecords.map((r) => r.text),
       };
     }
 
-    // Verification passed! Fetch comprehensive data
-    const [whoisData, comprehensiveData] = await Promise.all([
-      fetchWhoisInfo(domain.domainName),
-      fetchComprehensiveDomainData(domain.domainName),
-    ]);
-
     const now = new Date();
 
-    // Extract key fields from WHOIS
-    const registrar = whoisData?.registrar || null;
-    const registrationDate = whoisData?.creationDate
-      ? new Date(whoisData.creationDate)
-      : null;
-    const expirationDate = whoisData?.expirationDate
-      ? new Date(whoisData.expirationDate)
-      : null;
-    const nameServers = comprehensiveData.root.NS.length
-      ? JSON.stringify(comprehensiveData.root.NS)
-      : null;
-
+    // Mark as verified
     await db
       .update(domains)
-      .set({
-        verificationStatus: "verified",
-        verifiedAt: now,
-        registrar,
-        registrationDate,
-        expirationDate,
-        nameServers,
-        whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : null,
-        dnsRecords: JSON.stringify(comprehensiveData),
-        lastSyncedAt: now,
-        updatedAt: now,
-      })
+      .set({ verificationStatus: "verified", verifiedAt: now, updatedAt: now })
       .where(eq(domains.id, domainId));
+
+    // Full sync into all 8 normalised tables
+    await syncDomainData(domainId, domain.domainName);
 
     revalidatePath("/dashboard");
     revalidatePath(`/dashboard/domains/${domainId}`);
@@ -187,7 +172,7 @@ export async function verifyDomain(domainId: string) {
   }
 }
 
-// ─── 3. Sync Domain (re-fetch ALL data) ─────────────────────
+// ─── 3. Sync Domain ─────────────────────────────────────────
 
 export async function syncDomain(domainId: string) {
   const user = await getAuthenticatedUser();
@@ -199,30 +184,37 @@ export async function syncDomain(domainId: string) {
 
   if (!domain) return { error: "Domain not found" };
 
+  const now = new Date();
+
+  // Unverified: only refresh WHOIS (public data)
   if (domain.verificationStatus !== "verified") {
     try {
       const whoisData = await fetchWhoisInfo(domain.domainName).catch(() => null);
-      const now = new Date();
 
-      const registrar = whoisData?.registrar || domain.registrar;
-      const registrationDate = whoisData?.creationDate
-        ? new Date(whoisData.creationDate)
-        : domain.registrationDate;
-      const expirationDate = whoisData?.expirationDate
-        ? new Date(whoisData.expirationDate)
-        : domain.expirationDate;
+      if (whoisData) {
+        const registrar = whoisData.registrar ?? null;
+        const registrationDate = whoisData.creationDate ? new Date(whoisData.creationDate) : null;
+        const expirationDate = whoisData.expirationDate ? new Date(whoisData.expirationDate) : null;
+        const dataHash = md5([registrar, expirationDate?.toISOString() ?? ""].join("|"));
 
-      await db
-        .update(domains)
-        .set({
+        await db.insert(domainWhois).values({
+          id: crypto.randomUUID(),
+          domainId,
           registrar,
           registrationDate,
           expirationDate,
-          whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
-          lastSyncedAt: now,
+          nameServers: null,
+          rawData: whoisData.raw ?? null,
+          dataHash,
+          fetchedAt: now,
           updatedAt: now,
-        })
-        .where(eq(domains.id, domainId));
+        }).onConflictDoUpdate({
+          target: domainWhois.domainId,
+          set: { registrar, registrationDate, expirationDate, rawData: whoisData.raw ?? null, dataHash, fetchedAt: now, updatedAt: now },
+        });
+      }
+
+      await db.update(domains).set({ lastSyncedAt: now, updatedAt: now }).where(eq(domains.id, domainId));
 
       revalidatePath("/dashboard");
       revalidatePath(`/dashboard/domains/${domainId}`);
@@ -233,38 +225,9 @@ export async function syncDomain(domainId: string) {
     }
   }
 
+  // Verified: full sync across all 8 tables
   try {
-    const [whoisData, comprehensiveData] = await Promise.all([
-      fetchWhoisInfo(domain.domainName),
-      fetchComprehensiveDomainData(domain.domainName),
-    ]);
-
-    const now = new Date();
-
-    const registrar = whoisData?.registrar || domain.registrar;
-    const registrationDate = whoisData?.creationDate
-      ? new Date(whoisData.creationDate)
-      : domain.registrationDate;
-    const expirationDate = whoisData?.expirationDate
-      ? new Date(whoisData.expirationDate)
-      : domain.expirationDate;
-    const nameServers = comprehensiveData.root.NS.length
-      ? JSON.stringify(comprehensiveData.root.NS)
-      : domain.nameServers;
-
-    await db
-      .update(domains)
-      .set({
-        registrar,
-        registrationDate,
-        expirationDate,
-        nameServers,
-        whoisData: whoisData?.raw ? JSON.stringify(whoisData.raw) : domain.whoisData,
-        dnsRecords: JSON.stringify(comprehensiveData),
-        lastSyncedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(domains.id, domainId));
+    await syncDomainData(domainId, domain.domainName);
 
     revalidatePath("/dashboard");
     revalidatePath(`/dashboard/domains/${domainId}`);
@@ -282,6 +245,7 @@ export async function deleteDomain(domainId: string) {
   if (!user) return { error: "Unauthorized" };
 
   try {
+    // Cascade deletes all child rows (whois, dns_records, ssl, http, rdap, email_sec, subdomains, change_log)
     await db
       .delete(domains)
       .where(and(eq(domains.id, domainId), eq(domains.userId, user.id)));

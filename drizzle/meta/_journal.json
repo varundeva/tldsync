@@ -15,6 +15,13 @@
       "when": 1774458777918,
       "tag": "0001_remarkable_mother_askani",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1778915723188,
+      "tag": "0002_quick_betty_brant",
+      "breakpoints": true
     }
   ]
 }
