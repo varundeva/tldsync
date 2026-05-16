@@ -33,14 +33,21 @@ export async function GET(request: Request) {
       .innerJoin(user, eq(domains.userId, user.id))
       .where(eq(domains.verificationStatus, "verified"));
 
-    if (allDomains.length === 0) {
-      return NextResponse.json({ message: "No domains to sync", success: true });
+    const now = new Date();
+    const domainsToSync = allDomains.filter(({ domain }) => {
+      if (!domain.lastSyncedAt) return true;
+      const hoursSinceLastSync = (now.getTime() - domain.lastSyncedAt.getTime()) / (1000 * 60 * 60);
+      return hoursSinceLastSync >= domain.syncIntervalHours;
+    });
+
+    if (domainsToSync.length === 0) {
+      return NextResponse.json({ message: "No domains due for sync", success: true });
     }
 
     const results = {
       successful: 0,
       failed: 0,
-      total: allDomains.length,
+      total: domainsToSync.length,
       errors: [] as { domain: string; error: string }[],
     };
 
@@ -48,7 +55,7 @@ export async function GET(request: Request) {
     const userDomainMap = new Map<string, { email: string; domains: SyncReportDomain[] }>();
 
     // 3. Process each domain
-    for (const { domain, userEmail, userId } of allDomains) {
+    for (const { domain, userEmail, userId } of domainsToSync) {
       try {
         // Sync all 8 normalised tables + get dates for alerts
         const { expirationDate, sslValidTo } = await syncDomainData(
@@ -63,7 +70,8 @@ export async function GET(request: Request) {
           expirationDate,
           sslValidTo,
           userId,
-          domain.id
+          domain.id,
+          domain.alertDays as number[]
         );
 
         // Collect for sync report — read registrar from domain_whois

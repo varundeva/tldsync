@@ -10,6 +10,7 @@ import { z } from "zod";
 import { fetchWhoisInfo } from "@/lib/domain-lookup/index";
 import { fetchDohRaw } from "@/lib/domain-lookup/doh-dns";
 import { syncDomainData } from "@/lib/domain-sync";
+import { processAlerts } from "@/lib/notifications";
 import { md5 } from "@/lib/utils/hash";
 
 // ─── Schemas ─────────────────────────────────────────────────
@@ -227,7 +228,17 @@ export async function syncDomain(domainId: string) {
 
   // Verified: full sync across all 8 tables
   try {
-    await syncDomainData(domainId, domain.domainName);
+    const { expirationDate, sslValidTo } = await syncDomainData(domainId, domain.domainName);
+    
+    await processAlerts(
+      domain.domainName,
+      user.email,
+      expirationDate,
+      sslValidTo,
+      user.id,
+      domainId,
+      domain.alertDays as number[]
+    );
 
     revalidatePath("/dashboard");
     revalidatePath(`/dashboard/domains/${domainId}`);

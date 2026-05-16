@@ -69,8 +69,10 @@ export const domains = pgTable("domains", {
   verificationStatus: text("verificationStatus").notNull().default("pending"), // pending | verified | failed
   verifiedAt: timestamp("verifiedAt"),
 
-  // Sync tracking
+  // Sync & Notification tracking
   lastSyncedAt: timestamp("lastSyncedAt"),
+  syncIntervalHours: integer("syncIntervalHours").notNull().default(24),
+  alertDays: jsonb("alertDays").$type<number[]>().notNull().default([30, 14, 7, 3, 2, 1]),
 
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull(),

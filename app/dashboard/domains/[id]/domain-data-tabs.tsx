@@ -28,6 +28,7 @@ import {
   ShieldCheck,
   ShieldX,
   Network,
+  Settings2,
 } from "lucide-react";
 import type {
   ComprehensiveDomainData,

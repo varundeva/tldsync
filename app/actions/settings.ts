@@ -15,7 +15,7 @@ import { sendTelegramTestMessage } from "@/lib/telegram";
 
 // ─── Helper ──────────────────────────────────────────────────
 
-async function getAuthenticatedUser() {
+export async function getAuthenticatedUser() {
   const session = await auth.api.getSession({
     headers: await headers(),
   });

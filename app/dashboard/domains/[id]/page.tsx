@@ -22,7 +22,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format, differenceInDays } from "date-fns";
-import { ArrowLeft, Shield, Clock, Server, Globe } from "lucide-react";
+import { ArrowLeft, Shield, Clock, Server, Globe, Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import DomainDataTabs from "./domain-data-tabs";
 import DomainSyncButton from "./domain-sync-button";
@@ -161,6 +162,12 @@ export default async function DomainDetailsPage({
                 {statusText}
               </Badge>
             )}
+            <Link href={`/dashboard/domains/${domain.id}/settings`}>
+              <Button variant="outline" size="sm" className="h-8 shadow-sm">
+                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                Settings
+              </Button>
+            </Link>
             <DomainSyncButton
               domainId={domain.id}
               lastSyncedAt={domain.lastSyncedAt?.toISOString() || null}
@@ -265,6 +272,10 @@ export default async function DomainDetailsPage({
               {domain.lastSyncedAt
                 ? `${format(domain.lastSyncedAt, "PPp")} (Local Time)`
                 : "—"}
+            </div>
+            <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-1">
+              <Clock className="w-3 h-3" />
+              Next sync after {domain.syncIntervalHours}h
             </div>
           </CardContent>
         </Card>

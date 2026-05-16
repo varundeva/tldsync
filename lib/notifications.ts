@@ -61,9 +61,10 @@ export async function processAlerts(
   expirationDate: Date | null,
   sslValidTo: string | null,
   userId?: string,
-  domainId?: string
+  domainId?: string,
+  customAlertDays?: number[]
 ) {
-  const milestones = [60, 30, 14, 3, 2, 1];
+  const milestones = customAlertDays ?? [30, 14, 7, 3, 2, 1];
   const now = new Date();
 
   // Fetch user settings if userId is available
