@@ -9,7 +9,7 @@ import { sendDiscordSyncReport, type SyncReportDomain } from "@/lib/discord";
 import { sendSlackSyncReport } from "@/lib/slack";
 import { sendTelegramSyncReport } from "@/lib/telegram";
 
-export const maxDuration = 3600;
+export const maxDuration = 600;
 
 export async function GET(request: Request) {
   // 1. Verify Authentication to prevent unauthorized abuse
