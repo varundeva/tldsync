@@ -322,7 +322,7 @@ export default function DomainSettingsForm({
           <CardContent className="space-y-4 text-sm text-slate-600">
             <div className="space-y-1.5">
               <strong className="text-slate-800 block">Custom Schedules</strong>
-              <p>Tailor the alert schedule based on the domain's criticality. Mission-critical domains might need 90, 60, 30 day alerts, while standard domains only need 14 and 3.</p>
+              <p>Tailor the alert schedule based on the domain&apos;s criticality. Mission-critical domains might need 90, 60, 30 day alerts, while standard domains only need 14 and 3.</p>
             </div>
             <div className="space-y-1.5">
               <strong className="text-slate-800 block">Sync Impact</strong>

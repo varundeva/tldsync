@@ -91,7 +91,6 @@ export default async function DomainDetailsPage({
               server: httpRow.server ?? null,
               poweredBy: httpRow.poweredBy ?? null,
               headers: (httpRow.headers ?? {}) as Record<string, string>,
-              // eslint-disable-next-line @typescript-eslint/no-explicit-any
               securityHeaders: (httpRow.securityHeaders ?? {}) as any,
             }
           : null,
