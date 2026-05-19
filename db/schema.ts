@@ -5,6 +5,7 @@ import {
   timestamp,
   jsonb,
   integer,
+  numeric,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -78,6 +79,36 @@ export const domains = pgTable("domains", {
   createdAt: timestamp("createdAt").notNull(),
   updatedAt: timestamp("updatedAt").notNull(),
 });
+
+// ─── 1.5. domain_metadata — Custom Manual Tracking (Vault) ──
+
+export const domainMetadata = pgTable("domain_metadata", {
+  id: text("id").primaryKey(),
+  domainId: text("domainId")
+    .notNull()
+    .references(() => domains.id, { onDelete: "cascade" }),
+
+  // Financials
+  registrationCost: numeric("registrationCost", { precision: 10, scale: 2 }),
+  renewalCost: numeric("renewalCost", { precision: 10, scale: 2 }),
+  currency: text("currency").default("USD"),
+  autoRenew: boolean("autoRenew").default(false),
+  estimatedValue: numeric("estimatedValue", { precision: 10, scale: 2 }),
+
+  // Access URLs
+  registrarUrl: text("registrarUrl"),
+  dnsPanelUrl: text("dnsPanelUrl"), // If null/empty, fallback to registrarUrl
+  hostingUrl: text("hostingUrl"),
+
+  // Organization & Identity
+  status: text("status").default("active"),
+  tags: jsonb("tags").$type<string[]>(), // Array of strings
+  notes: text("notes"),
+
+  updatedAt: timestamp("updatedAt").notNull(),
+}, (t) => [
+  uniqueIndex("domain_metadata_domainId_idx").on(t.domainId),
+]);
 
 // ─── 2. domain_whois — WHOIS snapshot (upsert on sync) ──────
 

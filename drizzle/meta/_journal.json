@@ -43,6 +43,13 @@
       "when": 1778924234264,
       "tag": "0005_loud_miek",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1779209458904,
+      "tag": "0006_wealthy_ben_parker",
+      "breakpoints": true
     }
   ]
 }

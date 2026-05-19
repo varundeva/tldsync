@@ -8,6 +8,7 @@ import {
   domainRdap,
   domainEmailSecurity,
   domainSubdomains,
+  domainMetadata,
 } from "@/db/schema";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
@@ -22,7 +23,15 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format, differenceInDays } from "date-fns";
-import { ArrowLeft, Shield, Clock, Server, Globe, Settings2 } from "lucide-react";
+import {
+  ArrowLeft,
+  Clock,
+  Globe,
+  Server,
+  Settings2,
+  Shield,
+  Wallet,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import DomainDataTabs from "./domain-data-tabs";
@@ -53,7 +62,7 @@ export default async function DomainDetailsPage({
   const isVerified = domain.verificationStatus === "verified";
 
   // ─── Parallel join queries across normalised tables ──────────
-  const [whoisRow, dnsRows, sslRow, httpRow, rdapRow, emailSecRow, subdomainsRow] =
+  const [whoisRow, dnsRows, sslRow, httpRow, rdapRow, emailSecRow, subdomainsRow, metadataRow] =
     await Promise.all([
       db.query.domainWhois.findFirst({ where: eq(domainWhois.domainId, id) }),
       db.select().from(domainDnsRecords).where(eq(domainDnsRecords.domainId, id)),
@@ -62,6 +71,7 @@ export default async function DomainDetailsPage({
       db.query.domainRdap.findFirst({ where: eq(domainRdap.domainId, id) }),
       db.query.domainEmailSecurity.findFirst({ where: eq(domainEmailSecurity.domainId, id) }),
       db.query.domainSubdomains.findFirst({ where: eq(domainSubdomains.domainId, id) }),
+      db.query.domainMetadata.findFirst({ where: eq(domainMetadata.domainId, id) }),
     ]);
 
   // Reconstruct ComprehensiveDomainData shape from DNS rows for DomainDataTabs
@@ -71,34 +81,34 @@ export default async function DomainDetailsPage({
 
   const reconstructedDnsRecords: ComprehensiveDomainData | null = isVerified
     ? {
-        root: dnsRecordMap as unknown as ComprehensiveDomainData["root"],
-        subdomains: (subdomainsRow?.rawData ?? []) as ComprehensiveDomainData["subdomains"],
-        ssl: sslRow
-          ? {
-              issuer: sslRow.issuer ?? "",
-              subject: sslRow.subject ?? "",
-              validFrom: sslRow.validFrom?.toISOString() ?? "",
-              validTo: sslRow.validTo?.toISOString() ?? "",
-              serialNumber: sslRow.serialNumber ?? "",
-              fingerprint256: sslRow.fingerprint256 ?? "",
-              altNames: (sslRow.altNames ?? []) as string[],
-              protocol: sslRow.protocol ?? "",
-            }
-          : null,
-        http: httpRow
-          ? {
-              statusCode: httpRow.statusCode ?? 0,
-              redirectUrl: httpRow.redirectUrl ?? null,
-              server: httpRow.server ?? null,
-              poweredBy: httpRow.poweredBy ?? null,
-              headers: (httpRow.headers ?? {}) as Record<string, string>,
-              securityHeaders: (httpRow.securityHeaders ?? {}) as any,
-            }
-          : null,
-        emailSecurity: (emailSecRow?.rawData ?? {
-          dmarc: [], spf: [], dkim: [], bimi: [], mtaSts: [], tlsRpt: [],
-        }) as ComprehensiveDomainData["emailSecurity"],
-      }
+      root: dnsRecordMap as unknown as ComprehensiveDomainData["root"],
+      subdomains: (subdomainsRow?.rawData ?? []) as ComprehensiveDomainData["subdomains"],
+      ssl: sslRow
+        ? {
+          issuer: sslRow.issuer ?? "",
+          subject: sslRow.subject ?? "",
+          validFrom: sslRow.validFrom?.toISOString() ?? "",
+          validTo: sslRow.validTo?.toISOString() ?? "",
+          serialNumber: sslRow.serialNumber ?? "",
+          fingerprint256: sslRow.fingerprint256 ?? "",
+          altNames: (sslRow.altNames ?? []) as string[],
+          protocol: sslRow.protocol ?? "",
+        }
+        : null,
+      http: httpRow
+        ? {
+          statusCode: httpRow.statusCode ?? 0,
+          redirectUrl: httpRow.redirectUrl ?? null,
+          server: httpRow.server ?? null,
+          poweredBy: httpRow.poweredBy ?? null,
+          headers: (httpRow.headers ?? {}) as Record<string, string>,
+          securityHeaders: (httpRow.securityHeaders ?? {}) as any,
+        }
+        : null,
+      emailSecurity: (emailSecRow?.rawData ?? {
+        dmarc: [], spf: [], dkim: [], bimi: [], mtaSts: [], tlsRpt: [],
+      }) as ComprehensiveDomainData["emailSecurity"],
+    }
     : null;
 
   const expirationDate = whoisRow?.expirationDate ?? null;
@@ -162,6 +172,12 @@ export default async function DomainDetailsPage({
                 {statusText}
               </Badge>
             )}
+            <Link href={`/dashboard/domains/${domain.id}/vault`}>
+              <Button variant="outline" size="sm" className="h-8 shadow-sm">
+                <Wallet className="w-3.5 h-3.5 mr-1.5" />
+                Vault
+              </Button>
+            </Link>
             <Link href={`/dashboard/domains/${domain.id}/settings`}>
               <Button variant="outline" size="sm" className="h-8 shadow-sm">
                 <Settings2 className="w-3.5 h-3.5 mr-1.5" />
@@ -319,6 +335,7 @@ export default async function DomainDetailsPage({
         dnsRecords={reconstructedDnsRecords}
         whoisData={whoisRow?.rawData as Record<string, string> | null}
         isVerified={isVerified}
+        domainId={id}
       />
     </div>
   );

@@ -41,6 +41,7 @@ interface DomainDataTabsProps {
   dnsRecords: ComprehensiveDomainData | null;
   whoisData: Record<string, unknown> | null;
   isVerified: boolean;
+  domainId: string;
 }
 
 // ─── Helper: Security Header Check ─────────────────────────
@@ -75,7 +76,8 @@ function SecurityCheck({
 export default function DomainDataTabs({
   dnsRecords,
   whoisData,
-  isVerified
+  isVerified,
+  domainId,
 }: DomainDataTabsProps) {
   const data = dnsRecords;
   const root = data?.root;
