@@ -155,8 +155,29 @@ export async function syncDomainData(
       if (syncFeatures.includes("dns")) {
         for (const recordType of DNS_RECORD_TYPES) {
           const newData = (comprehensiveData.root as DnsRecordSet)[recordType] ?? null;
-          // Hash only stable content — strip ttl/provider which change every query
-          const newHash = md5(JSON.stringify(stripVolatileFields(newData)));
+          // Build human-readable summaries for the diff and for hashing.
+          // This ensures determinism, ignoring Postgres JSONB key reordering.
+          const summarize = (data: unknown): string => {
+            if (!data) return "—";
+            if (Array.isArray(data)) {
+              if (data.length === 0) return "(empty)";
+              return data
+                .map((r: Record<string, unknown>) => {
+                  if (recordType === "A" || recordType === "AAAA") return r.address;
+                  if (recordType === "MX") return `${r.exchange} (priority ${r.priority})`;
+                  if (recordType === "TXT") return r.text;
+                  if (recordType === "NS") return r.nameserver;
+                  if (recordType === "CNAME") return r.target;
+                  return JSON.stringify(r);
+                })
+                .sort() // Sort alphabetically to maintain deterministic order
+                .join(", ");
+            }
+            return JSON.stringify(data);
+          };
+
+          const newDataStr = summarize(newData);
+          const newHash = md5(newDataStr);
 
           const existing = await db.query.domainDnsRecords.findFirst({
             where: and(
@@ -165,35 +186,10 @@ export async function syncDomainData(
             ),
           });
 
-          // Only log a change when there IS a prior record AND the data actually changed.
-          // First-time inserts (existing === undefined) are silently written — no change alert.
-          // Recompute existing hash from stored data with same stripping logic to handle
-          // migration from old hashes that included volatile ttl/provider fields.
-          const existingStableHash = existing
-            ? md5(JSON.stringify(stripVolatileFields(existing.recordData)))
-            : null;
+          // Recompute existing hash from stored data to handle migration from old hashes
+          const existingStableHash = existing ? md5(summarize(existing.recordData)) : null;
 
           if (existing && existingStableHash !== newHash) {
-            // Build human-readable summaries for the diff
-            const summarize = (data: unknown): string => {
-              if (!data) return "—";
-              if (Array.isArray(data)) {
-                if (data.length === 0) return "(empty)";
-                return data
-                  .map((r: Record<string, unknown>) => {
-                    if (recordType === "A" || recordType === "AAAA") return r.address;
-                    if (recordType === "MX") return `${r.exchange} (priority ${r.priority})`;
-                    if (recordType === "TXT") return r.text;
-                    if (recordType === "NS") return r.nameserver;
-                    if (recordType === "CNAME") return r.target;
-                    return JSON.stringify(r);
-                  })
-                  .sort() // Sort alphabetically to maintain deterministic Before/After views
-                  .join(", ");
-              }
-              return JSON.stringify(data);
-            };
-
             await db.insert(dnsChangeLog).values({
               id: crypto.randomUUID(),
               domainId,
@@ -204,7 +200,7 @@ export async function syncDomainData(
                 raw: existing.recordData,
               } as unknown as Record<string, unknown>[],
               newData: {
-                summary: summarize(newData),
+                summary: newDataStr,
                 raw: newData,
               } as unknown as Record<string, unknown>[],
               detectedAt: now,
