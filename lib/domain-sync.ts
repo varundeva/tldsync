@@ -30,7 +30,7 @@ const DNS_RECORD_TYPES = ["A", "AAAA", "MX", "TXT", "NS", "CNAME"] as const;
 function stripVolatileFields(data: unknown): unknown {
   if (!data) return data;
   if (Array.isArray(data)) {
-    return data.map((record) => {
+    const stripped = data.map((record) => {
       if (record && typeof record === "object") {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { ttl, provider, ...stable } = record as Record<string, unknown>;
@@ -38,6 +38,8 @@ function stripVolatileFields(data: unknown): unknown {
       }
       return record;
     });
+    // Sort array deterministically so hash ignores API return order (e.g. IPs round-robined)
+    return stripped.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   }
   if (typeof data === "object") {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -186,6 +188,7 @@ export async function syncDomainData(
                     if (recordType === "CNAME") return r.target;
                     return JSON.stringify(r);
                   })
+                  .sort() // Sort alphabetically to maintain deterministic Before/After views
                   .join(", ");
               }
               return JSON.stringify(data);
