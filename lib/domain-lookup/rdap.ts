@@ -69,11 +69,18 @@ let bootstrapFetchedAt = 0;
 
 async function findRdapServer(tld: string): Promise<string> {
     if (!bootstrapCache || Date.now() - bootstrapFetchedAt > 86_400_000) {
-        const res = await fetch('https://data.iana.org/rdap/dns.json', {
-            next: { revalidate: 86400 },
-        });
-        bootstrapCache = await res.json();
-        bootstrapFetchedAt = Date.now();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 8000);
+        try {
+            const res = await fetch('https://data.iana.org/rdap/dns.json', {
+                signal: controller.signal,
+                next: { revalidate: 86400 },
+            });
+            bootstrapCache = await res.json();
+            bootstrapFetchedAt = Date.now();
+        } finally {
+            clearTimeout(timeout);
+        }
     }
 
     const tldLower = tld.toLowerCase();
@@ -94,10 +101,18 @@ export async function fetchRdap(domain: string): Promise<RdapResult> {
     const rdapBase = await findRdapServer(tld);
     const rdapUrl = `${rdapBase}domain/${domain}`;
 
-    const res = await fetch(rdapUrl, {
-        headers: { Accept: 'application/rdap+json' },
-        next: { revalidate: 3600 },
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000); // 10s hard timeout
+
+    let res: Response;
+    try {
+        res = await fetch(rdapUrl, {
+            signal: controller.signal,
+            headers: { Accept: 'application/rdap+json' },
+        });
+    } finally {
+        clearTimeout(timeout);
+    }
 
     if (!res.ok) {
         throw new Error(`RDAP lookup failed: ${res.status} for ${domain}`);

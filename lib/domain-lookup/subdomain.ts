@@ -11,7 +11,7 @@ const COMMON_SUBDOMAINS = [
 async function fetchCtSubdomains(domain: string): Promise<string[]> {
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 30000);
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s max for crt.sh
 
         const res = await fetch(
             `https://crt.sh/?q=%25.${encodeURIComponent(domain)}&output=json`,
@@ -76,31 +76,41 @@ export async function discoverSubdomains(domain: string): Promise<SubdomainRecor
         if (r) merged.set(r.fullDomain, r);
     }
 
-    const ctProbes = ctSubdomains
-        .filter((full) => !COMMON_SUBDOMAINS.includes(full.replace(`.${domain}`, "").split(".")[0]) || !merged.has(full))
-        .map(async (fullDomain) => {
-            const sub = fullDomain.slice(0, fullDomain.length - domain.length - 1);
-            if (merged.has(fullDomain)) {
-                merged.get(fullDomain)!.source = "ct+dns";
-                return;
-            }
-            const probed = await probeDns(sub, fullDomain);
-            if (probed) {
-                probed.source = "ct+dns";
-                merged.set(fullDomain, probed);
-            } else {
-                merged.set(fullDomain, {
-                    name: sub,
-                    fullDomain,
-                    A: [],
-                    AAAA: [],
-                    CNAME: [],
-                    source: "ct",
-                });
-            }
-        });
+    // Probe CT-discovered subdomains in capped batches to prevent timeout
+    const CT_BATCH_SIZE = 10;
+    const ctToProbe = ctSubdomains.filter(
+        (full) => !merged.has(full)
+    );
 
-    await Promise.all(ctProbes);
+    for (let i = 0; i < ctToProbe.length; i += CT_BATCH_SIZE) {
+        const batch = ctToProbe.slice(i, i + CT_BATCH_SIZE);
+        await Promise.all(
+            batch.map(async (fullDomain) => {
+                const sub = fullDomain.slice(0, fullDomain.length - domain.length - 1);
+                const probed = await probeDns(sub, fullDomain);
+                if (probed) {
+                    probed.source = "ct+dns";
+                    merged.set(fullDomain, probed);
+                } else {
+                    merged.set(fullDomain, {
+                        name: sub,
+                        fullDomain,
+                        A: [],
+                        AAAA: [],
+                        CNAME: [],
+                        source: "ct",
+                    });
+                }
+            })
+        );
+    }
+
+    // Mark brute-force results that also appeared in CT logs
+    for (const full of ctSubdomains) {
+        if (merged.has(full) && COMMON_SUBDOMAINS.includes(full.replace(`.${domain}`, "").split(".")[0])) {
+            merged.get(full)!.source = "ct+dns";
+        }
+    }
 
     return Array.from(merged.values()).sort((a, b) => a.fullDomain.localeCompare(b.fullDomain));
 }
