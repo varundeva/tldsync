@@ -196,7 +196,9 @@ export async function processAlerts(
           userEmail,
           domainName,
           change.recordType,
-          change.changeType
+          change.changeType,
+          (change.oldData as Record<string, unknown>)?.summary as string | undefined,
+          (change.newData as Record<string, unknown>)?.summary as string | undefined
         );
       }
 
@@ -211,7 +213,9 @@ export async function processAlerts(
             channels.discord.webhookUrl,
             domainName,
             change.recordType,
-            change.changeType
+            change.changeType,
+            (change.oldData as Record<string, unknown>)?.summary as string | undefined,
+            (change.newData as Record<string, unknown>)?.summary as string | undefined
           );
         } catch (err) {
           console.error(`Discord DNS change alert failed for ${domainName}:`, err);
@@ -220,14 +224,24 @@ export async function processAlerts(
 
       // Slack alert for DNS change
       if (channels.slack?.enabled && channels.slack.webhookUrl && channels.slack.events?.includes("dns_change")) {
-        try { await sendSlackDnsChangeAlert(channels.slack.webhookUrl, domainName, change.recordType, change.changeType); } 
-        catch (err) { console.error(`Slack DNS change alert failed for ${domainName}:`, err); }
+        try { 
+          await sendSlackDnsChangeAlert(
+            channels.slack.webhookUrl, domainName, change.recordType, change.changeType,
+            (change.oldData as Record<string, unknown>)?.summary as string | undefined,
+            (change.newData as Record<string, unknown>)?.summary as string | undefined
+          ); 
+        } catch (err) { console.error(`Slack DNS change alert failed for ${domainName}:`, err); }
       }
 
       // Telegram alert for DNS change
       if (channels.telegram?.enabled && channels.telegram.botToken && channels.telegram.chatId && channels.telegram.events?.includes("dns_change")) {
-        try { await sendTelegramDnsChangeAlert(channels.telegram.botToken, channels.telegram.chatId, domainName, change.recordType, change.changeType); } 
-        catch (err) { console.error(`Telegram DNS change alert failed for ${domainName}:`, err); }
+        try { 
+          await sendTelegramDnsChangeAlert(
+            channels.telegram.botToken, channels.telegram.chatId, domainName, change.recordType, change.changeType,
+            (change.oldData as Record<string, unknown>)?.summary as string | undefined,
+            (change.newData as Record<string, unknown>)?.summary as string | undefined
+          ); 
+        } catch (err) { console.error(`Telegram DNS change alert failed for ${domainName}:`, err); }
       }
 
       // Mark as alerted
@@ -249,11 +263,16 @@ export async function processAlerts(
       );
 
     for (const change of unalertedWhois) {
+      const oldReg = (change.oldData as Record<string, unknown>)?.registrar as string | undefined;
+      const newReg = (change.newData as Record<string, unknown>)?.registrar as string | undefined;
+      const oldExp = (change.oldData as Record<string, unknown>)?.expirationDate as string | undefined;
+      const newExp = (change.newData as Record<string, unknown>)?.expirationDate as string | undefined;
+
       if (channels.email?.enabled !== false && (channels.email?.events?.includes("whois_change") ?? false)) {
-        await sendWhoisChangeEmailAlert(userEmail, domainName, change.changeType);
+        await sendWhoisChangeEmailAlert(userEmail, domainName, change.changeType, oldReg, newReg, oldExp, newExp);
       }
       if (channels.discord?.enabled && channels.discord.webhookUrl && channels.discord.events?.includes("whois_change")) {
-        try { await sendDiscordWhoisChangeAlert(channels.discord.webhookUrl, domainName, change.changeType); } catch (err) {}
+        try { await sendDiscordWhoisChangeAlert(channels.discord.webhookUrl, domainName, change.changeType, oldReg, newReg, oldExp, newExp); } catch (err) {}
       }
       if (channels.slack?.enabled && channels.slack.webhookUrl && channels.slack.events?.includes("whois_change")) {
         try { await sendSlackWhoisChangeAlert(channels.slack.webhookUrl, domainName, change.changeType); } catch (err) {}
@@ -268,18 +287,44 @@ export async function processAlerts(
 
 // ─── WHOIS Change Email Alert ───────────────────────────────
 
-async function sendWhoisChangeEmailAlert(to: string, domainName: string, changeType: string) {
+async function sendWhoisChangeEmailAlert(
+  to: string,
+  domainName: string,
+  changeType: string,
+  oldRegistrar?: string,
+  newRegistrar?: string,
+  oldExpiry?: string,
+  newExpiry?: string
+) {
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) return;
   const subject = `WHOIS Change Detected: ${domainName}`;
+
+  const diffRow = (label: string, oldVal?: string, newVal?: string) => {
+    if (!oldVal && !newVal) return "";
+    if (oldVal === newVal) return "";
+    return `
+      <tr style="border-bottom: 1px solid #e2e8f0;">
+        <td style="padding: 10px 0; color: #64748b; vertical-align:top;">${label}</td>
+        <td style="padding: 10px 0;">
+          <span style="color:#ef4444; text-decoration:line-through;">${oldVal ?? "—"}</span>
+          &nbsp;→&nbsp;
+          <span style="color:#22c55e; font-weight:bold;">${newVal ?? "—"}</span>
+        </td>
+      </tr>`;
+  };
+
   const html = `
     <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
       <div style="background-color: #f59e0b; padding: 20px; text-align: center;">
         <h2 style="color: white; margin: 0;">WHOIS Change Detected</h2>
       </div>
       <div style="padding: 20px;">
-        <p>A change in WHOIS information was detected for <strong>${domainName}</strong>.</p>
-        <p>Change Type: <strong>${changeType.toUpperCase()}</strong></p>
-        <p>Please log in to TLDsync to review the updated WHOIS details.</p>
+        <p>A <strong>${changeType}</strong> change in WHOIS data was detected for <strong>${domainName}</strong>.</p>
+        <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
+          ${diffRow("Registrar", oldRegistrar, newRegistrar)}
+          ${diffRow("Expiry Date", oldExpiry, newExpiry)}
+        </table>
+        <p style="margin-top:16px;">Please log in to TLDsync to review the full WHOIS details.</p>
       </div>
     </div>
   `;
@@ -296,14 +341,26 @@ async function sendDnsChangeEmailAlert(
   to: string,
   domainName: string,
   recordType: string,
-  changeType: string
+  changeType: string,
+  oldSummary?: string,
+  newSummary?: string
 ) {
   if (!SMTP_HOST || !SMTP_USER || !SMTP_PASS || !SMTP_FROM) {
     console.warn("SMTP credentials missing. DNS change email skipped.");
     return;
   }
 
-  const subject = `DNS Change Detected: ${domainName} ${recordType} record ${changeType}`;
+  const subject = `DNS Change Detected: ${domainName} — ${recordType} record ${changeType}`;
+  const diffSection = (oldSummary || newSummary) ? `
+    <tr style="border-bottom: 1px solid #e2e8f0;">
+      <td style="padding: 10px 0; color: #64748b; vertical-align:top;">Before</td>
+      <td style="padding: 10px 0; color:#ef4444; font-family:monospace; font-size:12px;">${oldSummary ?? "—"}</td>
+    </tr>
+    <tr>
+      <td style="padding: 10px 0; color: #64748b; vertical-align:top;">After</td>
+      <td style="padding: 10px 0; color:#22c55e; font-weight:bold; font-family:monospace; font-size:12px;">${newSummary ?? "—"}</td>
+    </tr>` : "";
+
   const html = `
     <div style="font-family: Arial, sans-serif; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;">
       <div style="background-color: #6366f1; padding: 20px; text-align: center;">
@@ -311,7 +368,7 @@ async function sendDnsChangeEmailAlert(
       </div>
       <div style="padding: 20px;">
         <p>Hello,</p>
-        <p>This is an automated alert from <strong>TLDsync</strong>. A DNS record change was detected for <strong>${domainName}</strong>.</p>
+        <p>A DNS record change was detected for <strong>${domainName}</strong>.</p>
         <table style="width: 100%; border-collapse: collapse; margin-top: 20px; margin-bottom: 20px;">
           <tr style="border-bottom: 1px solid #e2e8f0;">
             <td style="padding: 10px 0; color: #64748b;">Domain</td>
@@ -321,10 +378,11 @@ async function sendDnsChangeEmailAlert(
             <td style="padding: 10px 0; color: #64748b;">Record Type</td>
             <td style="padding: 10px 0; font-weight: bold;">${recordType}</td>
           </tr>
-          <tr>
-            <td style="padding: 10px 0; color: #64748b;">Change Type</td>
+          <tr style="border-bottom: 1px solid #e2e8f0;">
+            <td style="padding: 10px 0; color: #64748b;">Change</td>
             <td style="padding: 10px 0; font-weight: bold; text-transform: capitalize;">${changeType}</td>
           </tr>
+          ${diffSection}
         </table>
         <p>Please log in to TLDsync to review the full change details.</p>
       </div>
@@ -350,28 +408,33 @@ async function sendDiscordDnsChangeAlert(
   webhookUrl: string,
   domainName: string,
   recordType: string,
-  changeType: string
+  changeType: string,
+  oldSummary?: string,
+  newSummary?: string
 ) {
   const colorMap: Record<string, number> = {
-    created: 0x22c55e, // green
+    created: 0x22c55e,  // green
     modified: 0xf59e0b, // amber
-    deleted: 0xef4444, // red
+    deleted: 0xef4444,  // red
   };
   const color = colorMap[changeType] ?? 0x6366f1;
 
+  const fields: { name: string; value: string; inline?: boolean }[] = [
+    { name: "Record Type", value: recordType, inline: true },
+    { name: "Change", value: changeType.charAt(0).toUpperCase() + changeType.slice(1), inline: true },
+  ];
+
+  if (oldSummary) fields.push({ name: "Before", value: `\`\`\`${oldSummary}\`\`\`` });
+  if (newSummary) fields.push({ name: "After",  value: `\`\`\`${newSummary}\`\`\`` });
+
   const payload = {
-    embeds: [
-      {
-        title: `🔔 DNS Change: ${domainName}`,
-        color,
-        fields: [
-          { name: "Record Type", value: recordType, inline: true },
-          { name: "Change", value: changeType.charAt(0).toUpperCase() + changeType.slice(1), inline: true },
-        ],
-        footer: { text: "TLDsync DNS Monitor" },
-        timestamp: new Date().toISOString(),
-      },
-    ],
+    embeds: [{
+      title: `🔔 DNS Change: ${domainName}`,
+      color,
+      fields,
+      footer: { text: "TLDsync DNS Monitor" },
+      timestamp: new Date().toISOString(),
+    }],
   };
 
   const res = await fetch(webhookUrl, {

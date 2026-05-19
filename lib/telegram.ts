@@ -52,9 +52,14 @@ export async function sendTelegramDnsChangeAlert(
   chatId: string,
   domainName: string,
   recordType: string,
-  changeType: string
+  changeType: string,
+  oldSummary?: string,
+  newSummary?: string
 ) {
-  const text = `🔄 *DNS Change Detected*\n\nA DNS change was detected for *${domainName}*.\n\n*Record Type:* ${recordType}\n*Change:* ${changeType.toUpperCase()}`;
+  const diffPart = (oldSummary || newSummary)
+    ? `\n\n*Before:*\n\`${oldSummary ?? "—"}\`\n*After:*\n\`${newSummary ?? "—"}\``
+    : "";
+  const text = `🔄 *DNS Change Detected*\n\nA DNS change was detected for *${domainName}*.\n\n*Record Type:* ${recordType}\n*Change:* ${changeType.toUpperCase()}${diffPart}`;
   await sendTelegramMessage(botToken, chatId, text);
 }
 

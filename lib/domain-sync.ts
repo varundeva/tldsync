@@ -29,6 +29,10 @@ interface SyncResult {
 
 /**
  * Normalises and synchronises all domain data across 8 tables.
+ *
+ * Change log rules:
+ *  - FIRST TIME a record is seen → INSERT only, NO change log entry (no "before" to compare with).
+ *  - SUBSEQUENT syncs → compare hash; only log + alert when hash actually changes.
  */
 export async function syncDomainData(
   domainId: string,
@@ -54,13 +58,30 @@ export async function syncDomainData(
         where: eq(domainWhois.domainId, domainId),
       });
 
+      // Only log a change when there IS a prior snapshot AND the hash differs.
+      // First-time inserts are silently skipped — nothing to compare against.
       if (existing && existing.dataHash !== newHash) {
+        const oldExpiry = existing.expirationDate
+          ? existing.expirationDate instanceof Date
+            ? existing.expirationDate.toISOString().split("T")[0]
+            : String(existing.expirationDate)
+          : "—";
+        const newExpiry = expirationDate
+          ? expirationDate.toISOString().split("T")[0]
+          : "—";
+
         await db.insert(whoisChangeLog).values({
           id: crypto.randomUUID(),
           domainId,
           changeType: "modified",
-          oldData: { registrar: existing.registrar, expirationDate: existing.expirationDate },
-          newData: { registrar, expirationDate },
+          oldData: {
+            registrar: existing.registrar ?? "—",
+            expirationDate: oldExpiry,
+          },
+          newData: {
+            registrar: registrar ?? "—",
+            expirationDate: newExpiry,
+          },
           detectedAt: now,
           alertSent: false,
           acknowledged: false,
@@ -116,14 +137,41 @@ export async function syncDomainData(
             ),
           });
 
+          // Only log a change when there IS a prior record AND the data actually changed.
+          // First-time inserts (existing === undefined) are silently written — no change alert.
           if (existing && existing.dataHash !== newHash) {
+            // Build human-readable summaries for the diff
+            const summarize = (data: unknown): string => {
+              if (!data) return "—";
+              if (Array.isArray(data)) {
+                if (data.length === 0) return "(empty)";
+                return data
+                  .map((r: Record<string, unknown>) => {
+                    if (recordType === "A" || recordType === "AAAA") return r.address;
+                    if (recordType === "MX") return `${r.exchange} (priority ${r.priority})`;
+                    if (recordType === "TXT") return r.text;
+                    if (recordType === "NS") return r.nameserver;
+                    if (recordType === "CNAME") return r.target;
+                    return JSON.stringify(r);
+                  })
+                  .join(", ");
+              }
+              return JSON.stringify(data);
+            };
+
             await db.insert(dnsChangeLog).values({
               id: crypto.randomUUID(),
               domainId,
               recordType,
-              changeType: existing ? "modified" : "created",
-              oldData: existing?.recordData as unknown as Record<string, unknown>[] ?? null,
-              newData: newData as unknown as Record<string, unknown>[] ?? null,
+              changeType: "modified",
+              oldData: {
+                summary: summarize(existing.recordData),
+                raw: existing.recordData,
+              } as unknown as Record<string, unknown>[],
+              newData: {
+                summary: summarize(newData),
+                raw: newData,
+              } as unknown as Record<string, unknown>[],
               detectedAt: now,
               alertSent: false,
               acknowledged: false,

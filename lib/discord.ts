@@ -69,23 +69,36 @@ export async function sendDiscordExpiryAlert(
 export async function sendDiscordWhoisChangeAlert(
   webhookUrl: string,
   domainName: string,
-  changeType: string
+  changeType: string,
+  oldRegistrar?: string,
+  newRegistrar?: string,
+  oldExpiry?: string,
+  newExpiry?: string
 ) {
   const colorMap: Record<string, number> = {
-    created: 0x22c55e, // green
-    modified: 0xf59e0b, // amber
-    deleted: 0xef4444, // red
+    created: 0x22c55e,
+    modified: 0xf59e0b,
+    deleted: 0xef4444,
   };
   const color = colorMap[changeType] ?? 0x6366f1;
+
+  const fields: { name: string; value: string; inline?: boolean }[] = [
+    { name: "Change", value: changeType.charAt(0).toUpperCase() + changeType.slice(1), inline: true },
+  ];
+
+  if (oldRegistrar !== newRegistrar && (oldRegistrar || newRegistrar)) {
+    fields.push({ name: "Registrar", value: `~~${oldRegistrar ?? "—"}~~ → **${newRegistrar ?? "—"}**` });
+  }
+  if (oldExpiry !== newExpiry && (oldExpiry || newExpiry)) {
+    fields.push({ name: "Expiry Date", value: `~~${oldExpiry ?? "—"}~~ → **${newExpiry ?? "—"}**` });
+  }
 
   await sendDiscordWebhook(webhookUrl, [
     {
       title: `📝 WHOIS Change: ${domainName}`,
       description: `A change in WHOIS information was detected for **${domainName}**.`,
       color,
-      fields: [
-        { name: "Change", value: changeType.charAt(0).toUpperCase() + changeType.slice(1), inline: true },
-      ],
+      fields,
       footer: { text: "TLDsync WHOIS Monitor" },
       timestamp: new Date().toISOString(),
     },

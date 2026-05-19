@@ -61,9 +61,11 @@ export async function sendSlackDnsChangeAlert(
   webhookUrl: string,
   domainName: string,
   recordType: string,
-  changeType: string
+  changeType: string,
+  oldSummary?: string,
+  newSummary?: string
 ) {
-  await sendSlackWebhook(webhookUrl, [
+  const blocks: any[] = [
     {
       type: "header",
       text: { type: "plain_text", text: "🔄 DNS Change Detected", emoji: true }
@@ -72,7 +74,16 @@ export async function sendSlackDnsChangeAlert(
       type: "section",
       text: { type: "mrkdwn", text: `A DNS change was detected for *${domainName}*.\n\n*Record Type:* ${recordType}\n*Change:* ${changeType.toUpperCase()}` }
     }
-  ]);
+  ];
+
+  if (oldSummary || newSummary) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*Before:*\n\`\`\`${oldSummary ?? "—"}\`\`\`\n*After:*\n\`\`\`${newSummary ?? "—"}\`\`\`` }
+    });
+  }
+
+  await sendSlackWebhook(webhookUrl, blocks);
 }
 
 export async function sendSlackWhoisChangeAlert(
