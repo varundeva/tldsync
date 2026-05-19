@@ -22,6 +22,31 @@ import { md5 } from "@/lib/utils/hash";
 
 const DNS_RECORD_TYPES = ["A", "AAAA", "MX", "TXT", "NS", "CNAME"] as const;
 
+/**
+ * Strip volatile metadata (ttl, provider) from DNS records before hashing.
+ * TTL counts down between queries and provider varies by DoH resolver,
+ * so including them causes false-positive "modified" alerts on every sync.
+ */
+function stripVolatileFields(data: unknown): unknown {
+  if (!data) return data;
+  if (Array.isArray(data)) {
+    return data.map((record) => {
+      if (record && typeof record === "object") {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { ttl, provider, ...stable } = record as Record<string, unknown>;
+        return stable;
+      }
+      return record;
+    });
+  }
+  if (typeof data === "object") {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { ttl, provider, ...stable } = data as Record<string, unknown>;
+    return stable;
+  }
+  return data;
+}
+
 interface SyncResult {
   expirationDate: Date | null;
   sslValidTo: string | null;
@@ -128,7 +153,8 @@ export async function syncDomainData(
       if (syncFeatures.includes("dns")) {
         for (const recordType of DNS_RECORD_TYPES) {
           const newData = (comprehensiveData.root as DnsRecordSet)[recordType] ?? null;
-          const newHash = md5(JSON.stringify(newData));
+          // Hash only stable content — strip ttl/provider which change every query
+          const newHash = md5(JSON.stringify(stripVolatileFields(newData)));
 
           const existing = await db.query.domainDnsRecords.findFirst({
             where: and(
@@ -139,7 +165,13 @@ export async function syncDomainData(
 
           // Only log a change when there IS a prior record AND the data actually changed.
           // First-time inserts (existing === undefined) are silently written — no change alert.
-          if (existing && existing.dataHash !== newHash) {
+          // Recompute existing hash from stored data with same stripping logic to handle
+          // migration from old hashes that included volatile ttl/provider fields.
+          const existingStableHash = existing
+            ? md5(JSON.stringify(stripVolatileFields(existing.recordData)))
+            : null;
+
+          if (existing && existingStableHash !== newHash) {
             // Build human-readable summaries for the diff
             const summarize = (data: unknown): string => {
               if (!data) return "—";
