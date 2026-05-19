@@ -35,6 +35,7 @@ import type {
   SslInfo,
   HttpInfo,
 } from "@/lib/domain-lookup/index";
+import { formatTtlTooltip } from "@/lib/utils";
 
 interface DomainDataTabsProps {
   dnsRecords: ComprehensiveDomainData | null;
@@ -182,7 +183,7 @@ export default function DomainDataTabs({
                   <div className="text-xs text-slate-500 uppercase tracking-wider mb-1">
                     TTL
                   </div>
-                  <div className="font-mono text-sm">
+                  <div className="font-mono text-sm" title={formatTtlTooltip(root.SOA.minimum)}>
                     {root.SOA.minimum}s
                   </div>
                 </div>
@@ -205,7 +206,7 @@ export default function DomainDataTabs({
                       {record.address}
                     </Badge>
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                       <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                         {record.provider}
                       </Badge>
@@ -233,7 +234,7 @@ export default function DomainDataTabs({
                       {record.address}
                     </Badge>
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                       <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                         {record.provider}
                       </Badge>
@@ -273,7 +274,7 @@ export default function DomainDataTabs({
                       <TableCell className="font-mono text-sm">
                         {mx.exchange}
                       </TableCell>
-                      <TableCell className="text-xs text-slate-500">
+                      <TableCell className="text-xs text-slate-500 cursor-help" title={formatTtlTooltip(mx.ttl)}>
                         {mx.ttl}s
                       </TableCell>
                       <TableCell>
@@ -305,7 +306,7 @@ export default function DomainDataTabs({
                       {record.target}
                     </Badge>
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                       <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                         {record.provider}
                       </Badge>
@@ -349,7 +350,7 @@ export default function DomainDataTabs({
                           {type}
                         </Badge>
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                          <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                           <Badge variant="secondary" className="text-[10px] opacity-70">
                             {record.provider}
                           </Badge>
@@ -384,7 +385,7 @@ export default function DomainDataTabs({
                       {record.nameserver}
                     </Badge>
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                       <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                         {record.provider}
                       </Badge>
@@ -424,7 +425,7 @@ export default function DomainDataTabs({
                       <TableCell className="font-mono text-sm">
                         {caa.value}
                       </TableCell>
-                      <TableCell className="text-xs text-slate-500">
+                      <TableCell className="text-xs text-slate-500 cursor-help" title={formatTtlTooltip(caa.ttl)}>
                         {caa.ttl}s
                       </TableCell>
                       <TableCell>
@@ -467,7 +468,7 @@ export default function DomainDataTabs({
                       <TableCell><Badge variant="outline" className="font-mono">{srv.weight}</Badge></TableCell>
                       <TableCell>
                         <div className="flex flex-col gap-1 items-start">
-                          <span className="text-[10px] text-slate-500">{srv.ttl}s</span>
+                          <span className="text-[10px] text-slate-500 cursor-help" title={formatTtlTooltip(srv.ttl)}>{srv.ttl}s</span>
                           <Badge variant="secondary" className="text-[8px] scale-90 origin-left opacity-70">{srv.provider}</Badge>
                         </div>
                       </TableCell>
@@ -530,7 +531,7 @@ export default function DomainDataTabs({
                       {record.target}
                     </Badge>
                     <div className="flex items-center justify-between px-1">
-                      <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                      <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                       <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                         {record.provider}
                       </Badge>

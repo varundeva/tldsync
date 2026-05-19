@@ -27,6 +27,7 @@ import { Button } from "@/components/ui/button";
 import Link from "next/link";
 import DomainDataTabs from "./domain-data-tabs";
 import DomainSyncButton from "./domain-sync-button";
+import { formatTtlTooltip } from "@/lib/utils";
 import type { ComprehensiveDomainData, NsRecord } from "@/lib/domain-lookup/types";
 
 export default async function DomainDetailsPage({
@@ -301,7 +302,7 @@ export default async function DomainDetailsPage({
                     {record.nameserver}
                   </Badge>
                   <div className="flex items-center justify-between px-1">
-                    <span className="text-[10px] text-slate-400">TTL: {record.ttl}</span>
+                    <span className="text-[10px] text-slate-400 cursor-help" title={formatTtlTooltip(record.ttl)}>TTL: {record.ttl}</span>
                     <Badge variant="secondary" className="text-[10px] scale-75 opacity-70">
                       {record.provider}
                     </Badge>
