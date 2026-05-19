@@ -32,8 +32,9 @@ function stripVolatileFields(data: unknown): unknown {
   if (Array.isArray(data)) {
     const stripped = data.map((record) => {
       if (record && typeof record === "object") {
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { ttl, provider, ...stable } = record as Record<string, unknown>;
+        const stable = { ...(record as Record<string, unknown>) };
+        delete stable.ttl;
+        delete stable.provider;
         return stable;
       }
       return record;
@@ -42,8 +43,9 @@ function stripVolatileFields(data: unknown): unknown {
     return stripped.sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)));
   }
   if (typeof data === "object") {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    const { ttl, provider, ...stable } = data as Record<string, unknown>;
+    const stable = { ...(data as Record<string, unknown>) };
+    delete stable.ttl;
+    delete stable.provider;
     return stable;
   }
   return data;

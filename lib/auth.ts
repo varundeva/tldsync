@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { db } from "@/db";
+import { admin, organization } from "better-auth/plugins";
 
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
@@ -11,6 +12,10 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
   }),
+  plugins: [
+    admin(),
+    organization(),
+  ],
 
   // ── OAuth providers ──────────────────────────────────────────
   socialProviders: {

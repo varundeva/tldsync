@@ -310,7 +310,7 @@ export default function VaultForm({ domainId, metadata }: Props) {
               <Globe className="w-4 h-4 text-slate-500" />
               <CardTitle className="text-base font-semibold">Access Portals</CardTitle>
             </div>
-            <CardDescription className="text-xs">Quick shortcuts to manage this domain's configuration</CardDescription>
+            <CardDescription className="text-xs">Quick shortcuts to manage this domain&apos;s configuration</CardDescription>
           </CardHeader>
           
           <CardContent className="space-y-4 pt-4">
