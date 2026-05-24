@@ -9,9 +9,11 @@ import {
   member as memberTable,
   invitation as invitationTable,
   subscription,
+  domains,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
+import { syncDomainData } from "@/lib/domain-sync";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
@@ -420,3 +422,160 @@ export async function adminInviteMember(orgId: string, email: string, role: stri
     return { error: err.message || "Could not invite member" };
   }
 }
+
+// ─── Domain Management (Admin) ───────────────────────────────────────────────
+
+export async function adminUpdateDomainSettings(
+  domainId: string,
+  syncIntervalHours: number,
+  alertDays: number[],
+  syncFeatures: string[]
+) {
+  try {
+    const session = await assertAdmin();
+
+    const domainRow = await db.query.domains.findFirst({
+      where: eq(domains.id, domainId),
+    });
+
+    if (!domainRow) {
+      return { error: "Domain not found" };
+    }
+
+    await db
+      .update(domains)
+      .set({
+        syncIntervalHours,
+        alertDays,
+        syncFeatures,
+        updatedAt: new Date(),
+      })
+      .where(eq(domains.id, domainId));
+
+    await writeAuditLog(
+      session.user.id,
+      "admin_update_domain_settings",
+      `Admin updated settings for domain ${domainRow.domainName} (Interval: ${syncIntervalHours}h)`
+    );
+
+    revalidatePath(`/admin/domains/${domainId}`);
+    revalidatePath(`/admin/domains/${domainId}/settings`);
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || "Failed to update domain settings" };
+  }
+}
+
+export async function adminDeleteDomain(domainId: string) {
+  try {
+    const session = await assertAdmin();
+
+    const domainRow = await db.query.domains.findFirst({
+      where: eq(domains.id, domainId),
+    });
+
+    if (!domainRow) {
+      return { error: "Domain not found" };
+    }
+
+    await writeAuditLog(
+      session.user.id,
+      "admin_delete_domain",
+      `Domain force-deleted by admin: ${domainRow.domainName} (ID: ${domainId})`
+    );
+
+    // Cascade deletes will handle related records
+    await db.delete(domains).where(eq(domains.id, domainId));
+
+    revalidatePath("/admin/domains");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || "Failed to delete domain" };
+  }
+}
+
+export async function adminReassignDomain(domainId: string, newOwnerEmail: string) {
+  try {
+    const session = await assertAdmin();
+
+    const domainRow = await db.query.domains.findFirst({
+      where: eq(domains.id, domainId),
+    });
+
+    if (!domainRow) {
+      return { error: "Domain not found" };
+    }
+
+    const newUser = await db.query.user.findFirst({
+      where: eq(user.email, newOwnerEmail),
+    });
+
+    if (!newUser) {
+      return { error: "New owner user not found" };
+    }
+
+    await db.update(domains).set({ userId: newUser.id, updatedAt: new Date() }).where(eq(domains.id, domainId));
+
+    await writeAuditLog(
+      session.user.id,
+      "admin_reassign_domain",
+      `Domain ${domainRow.domainName} reassigned to ${newOwnerEmail} (User ID: ${newUser.id})`
+    );
+
+    revalidatePath("/admin/domains");
+    return { success: true, ownerName: newUser.name, ownerEmail: newUser.email };
+  } catch (err: any) {
+    return { error: err.message || "Failed to reassign domain" };
+  }
+}
+
+export async function adminSyncDomain(domainId: string, domainName: string, features: string[]) {
+  try {
+    const session = await assertAdmin();
+
+    // Pass sync features explicitly or fall back to defaults
+    const result = await syncDomainData(domainId, domainName, features);
+
+    await writeAuditLog(
+      session.user.id,
+      "admin_sync_domain",
+      `Triggered manual sync for domain: ${domainName}`
+    );
+
+    revalidatePath("/admin/domains");
+    return { success: true, result };
+  } catch (err: any) {
+    return { error: err.message || "Failed to sync domain" };
+  }
+}
+
+export async function adminGlobalSyncDomainSweep() {
+  try {
+    const session = await assertAdmin();
+
+    const allDomains = await db.query.domains.findMany();
+
+    // Trigger sync for all verified domains
+    // In a real production system, this should push to a queue (e.g. SQS, Redis)
+    // Here we'll do it sequentially but we might not want to block forever.
+    // For now we'll trigger them and return quickly.
+    const promises = allDomains
+      .filter((d) => d.verificationStatus === "verified")
+      .map((d) => syncDomainData(d.id, d.domainName, (d.syncFeatures as string[]) || ["whois", "dns", "ssl", "http", "rdap", "email", "subdomains"]).catch(console.error));
+      
+    // Wait for all to finish (this might be slow if many domains)
+    await Promise.allSettled(promises);
+
+    await writeAuditLog(
+      session.user.id,
+      "admin_global_domain_sync",
+      `Triggered global domain registry sync sweep for ${promises.length} domains`
+    );
+
+    revalidatePath("/admin/domains");
+    return { success: true, count: promises.length };
+  } catch (err: any) {
+    return { error: err.message || "Failed to trigger global sync" };
+  }
+}
+

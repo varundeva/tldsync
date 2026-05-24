@@ -32,6 +32,7 @@ export default async function AdminDomainsPage() {
     verificationStatus: r.domain.verificationStatus,
     syncIntervalHours: r.domain.syncIntervalHours,
     lastSyncedAt: r.domain.lastSyncedAt,
+    syncFeatures: (r.domain.syncFeatures as string[]) || ["whois", "dns", "ssl", "http", "rdap", "email", "subdomains"],
     registrar: r.whois?.registrar ?? "—",
     expirationDate: r.whois?.expirationDate ?? null,
     ownerName: r.owner?.name ?? "Unknown Owner",
