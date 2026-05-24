@@ -329,7 +329,7 @@ export default function DomainsClientView({ initialDomains }: Props) {
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="newOwnerEmail" className="text-slate-300 text-sm font-medium">
-                  New Owner's Email Address
+                  New Owner&apos;s Email Address
                 </Label>
                 <Input
                   id="newOwnerEmail"
