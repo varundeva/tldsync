@@ -24,6 +24,43 @@ export const user = pgTable("user", {
   banned: boolean("banned"),
   banReason: text("banReason"),
   banExpires: timestamp("banExpires"),
+  // Plan assigned manually by admin (or set by payment webhook in future)
+  // Values: "hacker" | "premium" | "pro"
+  plan: text("plan").notNull().default("hacker"),
+  // planExpiresAt: null means the plan never expires (lifetime / manual)
+  planExpiresAt: timestamp("planExpiresAt"),
+});
+
+// ─── Subscription Placeholder ────────────────────────────────
+// Currently managed manually by admin.
+// When a payment provider (Razorpay / Stripe / Lemon Squeezy etc.) is
+// integrated, webhook handlers should upsert rows here AND update user.plan.
+//
+// Webhook flow to implement later:
+//   POST /api/webhooks/payment  →  verify signature  →
+//   upsert subscription row   →  db.update(user).set({ plan: newPlan })
+export const subscription = pgTable("subscription", {
+  id: text("id").primaryKey(),
+  userId: text("userId").notNull().references(() => user.id, { onDelete: "cascade" }),
+  plan: text("plan").notNull(),                  // "hacker" | "premium" | "pro"
+  status: text("status").notNull().default("active"), // active | canceled | past_due | trialing
+  // Payment provider fields — populate when integrated
+  providerName: text("providerName"),            // "razorpay" | "stripe" | "lemonsqueezy"
+  providerCustomerId: text("providerCustomerId"),
+  providerSubscriptionId: text("providerSubscriptionId"),
+  // Billing period
+  periodStart: timestamp("periodStart"),
+  periodEnd: timestamp("periodEnd"),
+  cancelAtPeriodEnd: boolean("cancelAtPeriodEnd").default(false),
+  // Free trial
+  trialStart: timestamp("trialStart"),
+  trialEnd: timestamp("trialEnd"),
+  // Plan feature limits snapshot at time of purchase
+  limits: jsonb("limits"),                       // { maxDomains, webhooks, ... }
+  // Admin notes or payment metadata
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").notNull(),
+  updatedAt: timestamp("updatedAt").notNull(),
 });
 
 export const session = pgTable("session", {

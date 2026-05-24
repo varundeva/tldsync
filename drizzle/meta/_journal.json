@@ -64,6 +64,13 @@
       "when": 1779211451085,
       "tag": "0008_vengeful_wolverine",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1779641021661,
+      "tag": "0009_spotty_firedrake",
+      "breakpoints": true
     }
   ]
 }

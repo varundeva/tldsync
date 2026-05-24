@@ -1,138 +1,149 @@
 "use server";
 
 import { db } from "@/db";
-import { user, auditLog, session as sessionTable, organization as organizationTable, member as memberTable, invitation as invitationTable } from "@/db/schema";
+import {
+  user,
+  auditLog,
+  session as sessionTable,
+  organization as organizationTable,
+  member as memberTable,
+  invitation as invitationTable,
+  subscription,
+} from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 
-/**
- * Helper to assert that the current logged-in user is an admin
- */
+// ─── Auth helper ──────────────────────────────────────────────────────────────
 async function assertAdmin() {
-  const session = await auth.api.getSession({
-    headers: await headers(),
-  });
+  const session = await auth.api.getSession({ headers: await headers() });
+  if (!session) throw new Error("Unauthorized: Authentication required");
 
-  if (!session) {
-    throw new Error("Unauthorized: Authentication required");
-  }
-
-  // Fetch the actual user from the DB to verify role
-  const dbUser = await db.query.user.findFirst({
-    where: eq(user.id, session.user.id),
-  });
-
-  const hasAdminRole = dbUser?.role && dbUser.role.split(",").map(r => r.trim()).includes("admin");
-
-  if (!hasAdminRole) {
-    throw new Error("Forbidden: Administrative permissions required");
-  }
+  const dbUser = await db.query.user.findFirst({ where: eq(user.id, session.user.id) });
+  const hasAdminRole = dbUser?.role?.split(",").map((r) => r.trim()).includes("admin");
+  if (!hasAdminRole) throw new Error("Forbidden: Administrative permissions required");
 
   return session;
 }
 
+async function writeAuditLog(
+  actorId: string,
+  action: string,
+  details: string
+) {
+  await db.insert(auditLog).values({
+    id: crypto.randomUUID(),
+    userId: actorId,
+    action,
+    ipAddress: "Server-Action",
+    userAgent: "Server-Action-API",
+    createdAt: new Date(),
+    details,
+  });
+}
+
+// ─── User Management ─────────────────────────────────────────────────────────
+
 /**
- * Server action to update a user's role in the database
+ * Update a user's role via better-auth admin API.
+ * Uses auth.api.setRole() — the canonical way per better-auth docs.
  */
 export async function updateUserRole(targetUserId: string, newRole: string) {
   try {
     const session = await assertAdmin();
 
-    if (newRole !== "admin" && newRole !== "user") {
-      return { error: "Invalid role specification" };
-    }
-
-    await db.update(user)
-      .set({ role: newRole })
-      .where(eq(user.id, targetUserId));
-
-    // Log this action to the Security Audit Logs
-    await db.insert(auditLog).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "role_change",
-      ipAddress: "127.0.0.1",
-      userAgent: "Server-Action-API",
-      createdAt: new Date(),
-      details: `Role updated for user ${targetUserId} to: ${newRole.toUpperCase()}`
+    await auth.api.setRole({
+      body: { userId: targetUserId, role: newRole as "admin" | "user" | ("admin" | "user")[] },
+      headers: await headers(),
     });
+
+    await writeAuditLog(
+      session.user.id,
+      "role_change",
+      `Role updated for user ${targetUserId} → ${newRole.toUpperCase()}`
+    );
 
     revalidatePath("/admin/users");
     return { success: true };
   } catch (err: any) {
-    return { error: err.message || "An error occurred updating user role" };
+    return { error: err.message || "Failed to update user role" };
   }
 }
 
 /**
- * Server action to suspend/ban a user in the database
+ * Ban or unban a user via better-auth admin API.
+ * better-auth.banUser() also revokes all active sessions automatically.
  */
-export async function toggleUserBan(targetUserId: string, isBanned: boolean, reason?: string) {
+export async function toggleUserBan(
+  targetUserId: string,
+  isBanned: boolean,
+  reason?: string
+) {
   try {
     const session = await assertAdmin();
 
-    await db.update(user)
-      .set({
-        banned: isBanned,
-        banReason: isBanned ? (reason || "Suspended by Administrator") : null,
-        banExpires: null // Permanent suspension until lifted manually
-      })
-      .where(eq(user.id, targetUserId));
+    if (isBanned) {
+      await auth.api.banUser({
+        body: { userId: targetUserId, banReason: reason || "Suspended by Administrator" },
+        headers: await headers(),
+      });
+    } else {
+      await auth.api.unbanUser({
+        body: { userId: targetUserId },
+        headers: await headers(),
+      });
+    }
 
-    // Log this action to the Security Audit Logs
-    await db.insert(auditLog).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: isBanned ? "suspend" : "unsuspend",
-      ipAddress: "127.0.0.1",
-      userAgent: "Server-Action-API",
-      createdAt: new Date(),
-      details: isBanned
-        ? `Account suspended for user ${targetUserId} (Reason: ${reason || "None specified"})`
-        : `Account suspension lifted for user ${targetUserId}`
-    });
+    await writeAuditLog(
+      session.user.id,
+      isBanned ? "suspend" : "unsuspend",
+      isBanned
+        ? `Account suspended: ${targetUserId} (Reason: ${reason || "None"})`
+        : `Account suspension lifted: ${targetUserId}`
+    );
 
     revalidatePath("/admin/users");
     return { success: true };
   } catch (err: any) {
-    return { error: err.message || "An error occurred toggling user suspension" };
+    return { error: err.message || "Failed to toggle user suspension" };
   }
 }
 
 /**
- * Server action to query all active sessions for a user
+ * List active sessions for a user via better-auth admin API.
  */
 export async function getUserSessions(targetUserId: string) {
   try {
     await assertAdmin();
-    const sessions = await db.select().from(sessionTable).where(eq(sessionTable.userId, targetUserId));
-    return { success: true, sessions };
+    const result = await auth.api.listUserSessions({
+      body: { userId: targetUserId },
+      headers: await headers(),
+    });
+    return { success: true, sessions: result };
   } catch (err: any) {
     return { error: err.message || "Could not query sessions" };
   }
 }
 
 /**
- * Server action to revoke/delete a specific user session
+ * Revoke a single session by its token via better-auth admin API.
  */
-export async function revokeUserSession(sessionId: string) {
+export async function revokeUserSession(sessionToken: string) {
   try {
     const session = await assertAdmin();
 
-    // Log the revocation event
-    await db.insert(auditLog).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "revoke_session",
-      ipAddress: "127.0.0.1",
-      userAgent: "Server-Action-API",
-      createdAt: new Date(),
-      details: `Session revoked by administrator: ${sessionId}`
+    await auth.api.revokeUserSession({
+      body: { sessionToken },
+      headers: await headers(),
     });
 
-    await db.delete(sessionTable).where(eq(sessionTable.id, sessionId));
+    await writeAuditLog(
+      session.user.id,
+      "revoke_session",
+      `Session revoked by administrator: token=${sessionToken.substring(0, 12)}...`
+    );
+
     return { success: true };
   } catch (err: any) {
     return { error: err.message || "Could not revoke session" };
@@ -140,22 +151,179 @@ export async function revokeUserSession(sessionId: string) {
 }
 
 /**
- * Server action to create an organization directly in the database
+ * Revoke ALL sessions for a user via better-auth admin API.
  */
-export async function adminCreateOrganization(name: string, slug: string, ownerUserId: string) {
+export async function revokeAllUserSessions(targetUserId: string) {
+  try {
+    const session = await assertAdmin();
+
+    await auth.api.revokeUserSessions({
+      body: { userId: targetUserId },
+      headers: await headers(),
+    });
+
+    await writeAuditLog(
+      session.user.id,
+      "revoke_all_sessions",
+      `All sessions revoked for user ${targetUserId}`
+    );
+
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || "Could not revoke all sessions" };
+  }
+}
+
+/**
+ * Create a new user via better-auth admin API.
+ */
+export async function adminCreateUser(
+  email: string,
+  name: string,
+  password: string,
+  role: string = "user"
+) {
+  try {
+    const session = await assertAdmin();
+
+    const newUser = await auth.api.createUser({
+      body: { email, name, password, role: role as "admin" | "user" },
+      headers: await headers(),
+    });
+
+    await writeAuditLog(
+      session.user.id,
+      "create_user",
+      `New user created by admin: ${email} with role ${role}`
+    );
+
+    revalidatePath("/admin/users");
+    return { success: true, user: newUser };
+  } catch (err: any) {
+    return { error: err.message || "Failed to create user" };
+  }
+}
+
+/**
+ * Hard-delete a user via better-auth admin API.
+ */
+export async function adminDeleteUser(targetUserId: string) {
+  try {
+    const session = await assertAdmin();
+
+    await auth.api.removeUser({
+      body: { userId: targetUserId },
+      headers: await headers(),
+    });
+
+    await writeAuditLog(
+      session.user.id,
+      "delete_user",
+      `User hard-deleted by admin: ${targetUserId}`
+    );
+
+    revalidatePath("/admin/users");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || "Failed to delete user" };
+  }
+}
+
+/**
+ * Impersonate a user — creates an impersonation session and returns it.
+ * The caller should redirect to /dashboard after calling this.
+ */
+export async function impersonateUser(targetUserId: string) {
+  try {
+    await assertAdmin();
+
+    const result = await auth.api.impersonateUser({
+      body: { userId: targetUserId },
+      headers: await headers(),
+    });
+
+    return { success: true, session: result };
+  } catch (err: any) {
+    return { error: err.message || "Failed to impersonate user" };
+  }
+}
+
+// ─── Plan Management (Manual Admin Override) ──────────────────────────────
+
+/**
+ * Manually assign a plan to a user.
+ * Updates user.plan directly. Also inserts a subscription row for history
+ * so every plan change is tracked over time.
+ *
+ * When a payment provider (Razorpay / LemonSqueezy / etc.) is integrated,
+ * the webhook handler should call the same pattern:
+ *   db.update(user).set({ plan }) + insert subscription row
+ */
+export async function updateUserPlan(
+  targetUserId: string,
+  newPlan: "hacker" | "premium" | "pro",
+  notes?: string
+) {
+  try {
+    const session = await assertAdmin();
+
+    const PLAN_LIMITS = {
+      hacker:  { maxDomains: 3,  syncIntervalMin: 24, webhooks: false, advancedAnalytics: false, prioritySync: false },
+      premium: { maxDomains: 10, syncIntervalMin: 6,  webhooks: true,  advancedAnalytics: false, prioritySync: false },
+      pro:     { maxDomains: 25, syncIntervalMin: 1,  webhooks: true,  advancedAnalytics: true,  prioritySync: true  },
+    };
+
+    // 1. Update the plan field on the user row
+    await db.update(user)
+      .set({ plan: newPlan, updatedAt: new Date() })
+      .where(eq(user.id, targetUserId));
+
+    // 2. Cancel any existing active subscription rows for this user
+    await db.update(subscription)
+      .set({ status: "canceled", updatedAt: new Date() })
+      .where(eq(subscription.userId, targetUserId));
+
+    // 3. Insert a new subscription row to record this assignment
+    if (newPlan !== "hacker") {
+      await db.insert(subscription).values({
+        id: crypto.randomUUID(),
+        userId: targetUserId,
+        plan: newPlan,
+        status: "active",
+        providerName: "manual",
+        limits: PLAN_LIMITS[newPlan],
+        notes: notes ?? `Manually assigned by admin ${session.user.id}`,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+    }
+
+    await writeAuditLog(
+      session.user.id,
+      "plan_change",
+      `Plan updated for user ${targetUserId} → ${newPlan.toUpperCase()}${notes ? ` (${notes})` : ""}`
+    );
+
+    revalidatePath("/admin/users");
+    revalidatePath("/admin/plans");
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message || "Failed to update user plan" };
+  }
+}
+
+// ─── Organization Management ────────────────────────────────────────────────
+
+export async function adminCreateOrganization(
+  name: string,
+  slug: string,
+  ownerUserId: string
+) {
   try {
     const session = await assertAdmin();
     const orgId = `org_${crypto.randomUUID().replace(/-/g, "")}`;
 
-    // Create the organization record
-    await db.insert(organizationTable).values({
-      id: orgId,
-      name,
-      slug,
-      createdAt: new Date(),
-    });
-
-    // Create the owner member record
+    await db.insert(organizationTable).values({ id: orgId, name, slug, createdAt: new Date() });
     await db.insert(memberTable).values({
       id: `member_${crypto.randomUUID().replace(/-/g, "")}`,
       organizationId: orgId,
@@ -164,16 +332,11 @@ export async function adminCreateOrganization(name: string, slug: string, ownerU
       createdAt: new Date(),
     });
 
-    // Log this action to the Security Audit Logs
-    await db.insert(auditLog).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "create_org",
-      ipAddress: "127.0.0.1",
-      userAgent: "Server-Action-API",
-      createdAt: new Date(),
-      details: `Organization created: ${name} (Slug: ${slug}) with Owner: ${ownerUserId}`
-    });
+    await writeAuditLog(
+      session.user.id,
+      "create_org",
+      `Organization created: ${name} (slug: ${slug}) owner: ${ownerUserId}`
+    );
 
     revalidatePath("/admin/organizations");
     return { success: true, orgId };
@@ -182,25 +345,12 @@ export async function adminCreateOrganization(name: string, slug: string, ownerU
   }
 }
 
-/**
- * Server action to delete an organization and all its cascade dependencies
- */
 export async function adminDeleteOrganization(orgId: string) {
   try {
     const session = await assertAdmin();
 
-    // Log the deletion to Audit Logs
-    await db.insert(auditLog).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "delete_org",
-      ipAddress: "127.0.0.1",
-      userAgent: "Server-Action-API",
-      createdAt: new Date(),
-      details: `Organization deleted: ${orgId}`
-    });
+    await writeAuditLog(session.user.id, "delete_org", `Organization deleted: ${orgId}`);
 
-    // Clean up members and invitations first (to bypass foreign key constraints)
     await db.delete(memberTable).where(eq(memberTable.organizationId, orgId));
     await db.delete(invitationTable).where(eq(invitationTable.organizationId, orgId));
     await db.delete(organizationTable).where(eq(organizationTable.id, orgId));
@@ -212,26 +362,15 @@ export async function adminDeleteOrganization(orgId: string) {
   }
 }
 
-/**
- * Server action to remove a member from a team
- */
 export async function adminRemoveMember(orgId: string, memberId: string) {
   try {
     const session = await assertAdmin();
-
-    // Log this action to the Security Audit Logs
-    await db.insert(auditLog).values({
-      id: crypto.randomUUID(),
-      userId: session.user.id,
-      action: "remove_team_member",
-      ipAddress: "127.0.0.1",
-      userAgent: "Server-Action-API",
-      createdAt: new Date(),
-      details: `Member ${memberId} removed from organization ${orgId}`
-    });
-
+    await writeAuditLog(
+      session.user.id,
+      "remove_team_member",
+      `Member ${memberId} removed from org ${orgId}`
+    );
     await db.delete(memberTable).where(eq(memberTable.id, memberId));
-
     revalidatePath("/admin/organizations");
     return { success: true };
   } catch (err: any) {
@@ -239,20 +378,13 @@ export async function adminRemoveMember(orgId: string, memberId: string) {
   }
 }
 
-/**
- * Server action to securely invite/add a member to a team
- */
 export async function adminInviteMember(orgId: string, email: string, role: string) {
   try {
     const session = await assertAdmin();
 
-    // 1. Check if user already exists
-    const existingUser = await db.query.user.findFirst({
-      where: eq(user.email, email),
-    });
+    const existingUser = await db.query.user.findFirst({ where: eq(user.email, email) });
 
     if (existingUser) {
-      // If user exists, add them directly as a member to bypass invitation email flow
       await db.insert(memberTable).values({
         id: `member_${crypto.randomUUID().replace(/-/g, "")}`,
         organizationId: orgId,
@@ -260,39 +392,26 @@ export async function adminInviteMember(orgId: string, email: string, role: stri
         role,
         createdAt: new Date(),
       });
-
-      // Log direct member addition
-      await db.insert(auditLog).values({
-        id: crypto.randomUUID(),
-        userId: session.user.id,
-        action: "add_team_member",
-        ipAddress: "127.0.0.1",
-        userAgent: "Server-Action-API",
-        createdAt: new Date(),
-        details: `User ${email} added directly to organization ${orgId} as ${role}`
-      });
+      await writeAuditLog(
+        session.user.id,
+        "add_team_member",
+        `User ${email} added to org ${orgId} as ${role}`
+      );
     } else {
-      // If user does not exist, insert an active pending invitation record
       await db.insert(invitationTable).values({
         id: `invite_${crypto.randomUUID().replace(/-/g, "")}`,
         organizationId: orgId,
         email,
         role,
         status: "pending",
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days expiry
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         inviterId: session.user.id,
       });
-
-      // Log invitation dispatch
-      await db.insert(auditLog).values({
-        id: crypto.randomUUID(),
-        userId: session.user.id,
-        action: "invite_team_member",
-        ipAddress: "127.0.0.1",
-        userAgent: "Server-Action-API",
-        createdAt: new Date(),
-        details: `Invitation sent to ${email} for organization ${orgId} as ${role}`
-      });
+      await writeAuditLog(
+        session.user.id,
+        "invite_team_member",
+        `Invitation sent to ${email} for org ${orgId} as ${role}`
+      );
     }
 
     revalidatePath("/admin/organizations");

@@ -13,7 +13,8 @@ import {
   Cpu,
   Network,
   LogOut,
-  Building2
+  Building2,
+  CreditCard
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
@@ -106,6 +107,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             >
               <Terminal className="w-4 h-4 text-slate-400" />
               <span>Audit Trail</span>
+            </Link>
+
+            <Link
+              href="/admin/plans"
+              className="flex items-center gap-3 px-3 py-2 text-sm font-medium rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors"
+            >
+              <CreditCard className="w-4 h-4 text-slate-400" />
+              <span>Plans & Billing</span>
             </Link>
           </nav>
         </div>

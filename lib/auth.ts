@@ -12,6 +12,7 @@ export const auth = betterAuth({
   database: drizzleAdapter(db, {
     provider: "pg",
   }),
+
   plugins: [
     admin(),
     organization(),
@@ -30,9 +31,6 @@ export const auth = betterAuth({
   },
 
   // ── Account linking ──────────────────────────────────────────
-  // Allows a user who previously signed in with one provider to also
-  // sign in with another provider that shares the same verified email,
-  // automatically linking both into the same account.
   account: {
     accountLinking: {
       enabled: true,
